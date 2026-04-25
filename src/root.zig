@@ -5,6 +5,7 @@ pub const Session = session.Session;
 pub const SessionConfig = session.Config;
 pub const ControlSignal = session.ControlSignal;
 pub const SessionStatus = session.SessionStatus;
+pub const TransportClass = session.TransportClass;
 pub const transport = @import("transport.zig");
 pub const Transport = transport.Transport;
 pub const MemTransport = transport.MemTransport;
@@ -16,6 +17,7 @@ test "host API: all symbols exported" {
     _ = SessionConfig;
     _ = ControlSignal;
     _ = SessionStatus;
+    _ = TransportClass;
     _ = Transport;
     _ = MemTransport;
     _ = FailTransport;
@@ -67,6 +69,12 @@ test "host API: SessionStatus required variants present" {
     _ = SessionStatus.idle;
     _ = SessionStatus.active;
     _ = SessionStatus.stopped;
+}
+
+test "host API: TransportClass required variants present" {
+    _ = TransportClass.posix_pty;
+    _ = TransportClass.container_bridge;
+    _ = TransportClass.conpty;
 }
 
 test "host API: Transport vtable methods present" {

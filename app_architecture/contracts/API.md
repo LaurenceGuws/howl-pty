@@ -22,6 +22,15 @@ Typed enum of observable session states:
 - `active` — transport running
 - `stopped` — transport stopped; session awaiting deinit or restart
 
+### `TransportClass`
+
+Typed enum of transport implementation classes (informational; not part of session runtime):
+- `posix_pty` — POSIX PTY transport for Linux and macOS hosts
+- `container_bridge` — Container bridge transport for Android, iOS, and platform-managed containers
+- `conpty` — ConPTY transport for Windows hosts (future)
+
+See `TRANSPORT_PORTABILITY.md` for platform abstraction details and transport class semantics.
+
 ## Ownership Boundaries
 
 - `howl-session` owns session lifecycle and transport orchestration.
@@ -212,6 +221,7 @@ Hosts access the following symbols exclusively via `root.zig`:
 - `SessionConfig` — configuration struct
 - `ControlSignal` — enum of control signal variants
 - `SessionStatus` — enum of observable session states
+- `TransportClass` — enum of transport implementation classes (informational)
 - `transport` — module re-export from `transport.zig`
 - `Transport` — virtual interface for transport adapters
 - `MemTransport` — in-memory test adapter
@@ -270,7 +280,7 @@ The following changes constitute breaking changes to the host API:
 1. **Removing or renaming exported symbols** in `root.zig`
 2. **Removing or renaming fields** in `Session`, `SessionConfig`, `ControlSignal`, or `SessionStatus`
 3. **Changing method signatures** (parameters, return types, or error unions) on `Session`
-4. **Removing or renaming variants** in `ControlSignal` or `SessionStatus` enums
+4. **Removing or renaming variants** in `ControlSignal`, `SessionStatus`, or `TransportClass` enums
 5. **Removing or changing transport vtable methods** (`Transport.start`, `.stop`, `.write`, `.read`, `.resize`, `.control`)
 6. **Changing method semantics** in ways that would alter observable behavior from a host's perspective
 
@@ -278,7 +288,7 @@ The following changes are **not** breaking:
 
 - Adding new exported symbols
 - Adding new optional fields to `SessionConfig`
-- Adding new enum variants to `ControlSignal` or `SessionStatus`
+- Adding new enum variants to `ControlSignal`, `SessionStatus`, or `TransportClass`
 - Changing internal module structure (e.g., moving implementation between sub-modules) if public symbols and signatures remain stable
 - Improving error handling or diagnostics
 
