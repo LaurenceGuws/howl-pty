@@ -65,6 +65,15 @@ LMVP-RC quality correction batch complete. All defects resolved and validated. Q
 | `LMVP-RC4` | done | Surface contract/code drift resolution (SurfaceConfig.session, docs) |
 | `LMVP-RC5` | done | Defect-to-test trace table and evidence documentation |
 
+## TH (Test Hygiene) - Cross-Repo Quality Round
+
+| Ticket | Status | Intent |
+| --- | --- | --- |
+| `TH-1` | done | Baseline test inventory (TEST_HYGIENE_MATRIX.md) |
+| `TH-2` | done | File-testability assessment (cross-module tests require zig build) |
+| `TH-3` | done | VS Code debug config (tasks.json, launch.json) |
+| `TH-4` | done | Platform gating verification (explicit Linux guard on unix_pty tests) |
+
 ## M5-B Planning (Integration Patterns and Multi-Host Support)
 
 Queue definition pending. Planned scope:
