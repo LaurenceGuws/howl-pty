@@ -49,6 +49,13 @@
 | `M5-A2` | done | `9ea48b7` | Root/API Conformance Tests |
 | `M5-A3` | done | `5d21d46` | Queue Closeout + M5 Progress Lock |
 
+## LMVP-R (Recovery Batch - Defect Fixes)
+| Ticket | Status | Commit | Intent |
+| --- | --- | --- | --- |
+| `LMVP-R1` | done | `f06c6da` | Session I/O direction fix (outbound vs inbound) |
+| `LMVP-R2` | done | `067c495` | Session resize consistency (engine dims) |
+| `LMVP-R4` | done | `66e2c41` | Session regression tests + evidence |
+
 ## M5-B Planning (Integration Patterns and Multi-Host Support)
 
 Queue definition pending. Planned scope:
