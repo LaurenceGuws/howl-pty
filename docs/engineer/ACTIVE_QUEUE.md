@@ -2,7 +2,7 @@
 
 ## Current State
 
-`M5-A` Host Integration Readiness contract closure complete. Queue open for `M5-B` definition.
+LMVP-RC quality correction batch complete. All defects resolved and validated. Queue ready for M5-B planning.
 
 ## Read Before Execution
 
@@ -55,6 +55,15 @@
 | `LMVP-R1` | done | `f06c6da` | Session I/O direction fix (outbound vs inbound) |
 | `LMVP-R2` | done | `067c495` | Session resize consistency (engine dims) |
 | `LMVP-R4` | done | `66e2c41` | Session regression tests + evidence |
+
+## LMVP-RC (Quality Correction Batch)
+| Ticket | Status | Intent |
+| --- | --- | --- |
+| `LMVP-RC1` | done | Partial-write correctness (apply respects transport.write() return) |
+| `LMVP-RC2` | done | Session.resize transactional safety (engine creation atomic) |
+| `LMVP-RC3` | done | Surface.resize transactional safety (cells_buf allocation atomic) |
+| `LMVP-RC4` | done | Surface contract/code drift resolution (SurfaceConfig.session, docs) |
+| `LMVP-RC5` | done | Defect-to-test trace table and evidence documentation |
 
 ## M5-B Planning (Integration Patterns and Multi-Host Support)
 
