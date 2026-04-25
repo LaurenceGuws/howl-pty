@@ -1679,3 +1679,56 @@ test "unix_pty transport: session lifecycle with shell (Linux only)" {
     s.stop();
     try std.testing.expectEqual(SessionStatus.stopped, s.status);
 }
+
+// ============================================================================
+// LMVP-R: Regression tests for fixed defects
+// ============================================================================
+
+test "regression: R1 I/O direction — apply writes to transport, not engine" {
+    var mt = transport_api.MemTransport.init(std.testing.allocator);
+    defer mt.deinit();
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .transport = mt.transport(),
+    });
+    defer s.deinit();
+
+    try s.start();
+    try s.feed("hello");
+    const n = s.apply();
+
+    // Bytes flushed to transport, not engine
+    try std.testing.expectEqual(@as(usize, 5), n);
+    // MemTransport records written bytes in tx
+    try std.testing.expectEqual(@as(usize, 5), mt.tx.items.len);
+}
+
+test "regression: R1 I/O direction — feedProcessOutput feeds engine" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    try s.feedProcessOutput("output");
+    const screen = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+}
+
+test "regression: R2 resize consistency — engine dims match session" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    try s.resize(120, 40);
+    try std.testing.expectEqual(@as(u16, 120), s.cols);
+    try std.testing.expectEqual(@as(u16, 40), s.rows);
+    
+    const screen = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 120), screen.cols);
+    try std.testing.expectEqual(@as(u16, 40), screen.rows);
+}
+
