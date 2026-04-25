@@ -11,6 +11,8 @@ pub const Transport = transport.Transport;
 pub const MemTransport = transport.MemTransport;
 pub const FailTransport = transport.FailTransport;
 pub const UnixPtyTransport = transport.UnixPtyTransport;
+pub const host_loop = @import("ops/host_loop.zig");
+pub const HostLoopTick = host_loop.HostLoopTick;
 
 test "host API: all symbols exported" {
     _ = Session;
@@ -22,6 +24,8 @@ test "host API: all symbols exported" {
     _ = MemTransport;
     _ = FailTransport;
     _ = UnixPtyTransport;
+    _ = HostLoopTick;
+    _ = host_loop.tick;
 }
 
 test "host API: SessionConfig required fields present" {

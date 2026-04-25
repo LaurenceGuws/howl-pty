@@ -61,7 +61,7 @@ const Session_ = @import("../session/core.zig").Session;
 const mem_transport = @import("../transport/mem.zig");
 
 test "host_loop: outbound only (pending queue drained)" {
-    var allocator = testing.allocator;
+    const allocator = testing.allocator;
 
     var session_handle = try Session_.init(.{
         .allocator = allocator,
@@ -87,7 +87,7 @@ test "host_loop: outbound only (pending queue drained)" {
 }
 
 test "host_loop: inbound only (engine fed)" {
-    var allocator = testing.allocator;
+    const allocator = testing.allocator;
 
     var session_handle = try Session_.init(.{
         .allocator = allocator,
@@ -113,7 +113,7 @@ test "host_loop: inbound only (engine fed)" {
 }
 
 test "host_loop: both outbound and inbound" {
-    var allocator = testing.allocator;
+    const allocator = testing.allocator;
 
     var session_handle = try Session_.init(.{
         .allocator = allocator,
@@ -141,7 +141,7 @@ test "host_loop: both outbound and inbound" {
 }
 
 test "host_loop: empty tick (no progress)" {
-    var allocator = testing.allocator;
+    const allocator = testing.allocator;
 
     var session_handle = try Session_.init(.{
         .allocator = allocator,
@@ -164,7 +164,7 @@ test "host_loop: empty tick (no progress)" {
 }
 
 test "host_loop: ordering is preserved (outbound before inbound)" {
-    var allocator = testing.allocator;
+    const allocator = testing.allocator;
 
     // Use MemTransport to track call order and verify sequencing
     var mem_t = mem_transport.MemTransport.init(allocator);
@@ -196,7 +196,7 @@ test "host_loop: ordering is preserved (outbound before inbound)" {
 }
 
 test "host_loop: multiple ticks with partial progress" {
-    var allocator = testing.allocator;
+    const allocator = testing.allocator;
 
     var session_handle = try Session_.init(.{
         .allocator = allocator,
@@ -209,18 +209,18 @@ test "host_loop: multiple ticks with partial progress" {
 
     // Tick 1: input only
     try session_handle.feed("a");
-    var result1 = try tick(&session_handle, "");
+    const result1 = try tick(&session_handle, "");
     try testing.expect(result1.outbound_drained == 1);
     try testing.expect(result1.inbound_fed == 0);
 
     // Tick 2: output only
-    var result2 = try tick(&session_handle, "b");
+    const result2 = try tick(&session_handle, "b");
     try testing.expect(result2.outbound_drained == 0);
     try testing.expect(result2.inbound_fed == 1);
 
     // Tick 3: both
     try session_handle.feed("c");
-    var result3 = try tick(&session_handle, "d");
+    const result3 = try tick(&session_handle, "d");
     try testing.expect(result3.outbound_drained == 1);
     try testing.expect(result3.inbound_fed == 1);
 }
