@@ -13,6 +13,7 @@ pub const FailTransport = transport.FailTransport;
 pub const UnixPtyTransport = transport.UnixPtyTransport;
 pub const host_loop = @import("ops/host_loop.zig");
 pub const HostLoopTick = host_loop.HostLoopTick;
+pub const host_integration_test = @import("conformance/host_integration_test.zig");
 
 test "host API: all symbols exported" {
     _ = Session;
@@ -26,6 +27,7 @@ test "host API: all symbols exported" {
     _ = UnixPtyTransport;
     _ = HostLoopTick;
     _ = host_loop.tick;
+    _ = host_integration_test;
 }
 
 test "host API: SessionConfig required fields present" {
