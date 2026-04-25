@@ -38,7 +38,7 @@ M5-B: Integration Patterns and Multi-Host Support batch complete. All 4 tickets 
 - **Commits:**
   - `3dde2bd` — M5-B2: Session async loop envelope (initial)
   - `e9985eb` — M5-B2 (fix): Enable test discovery
-- **Test Count Impact:** +6 tests (152 → 157 after B2 completion)
+- **Test Count Impact:** +6 tests (140 → 146 after B2 completion)
 - **Evidence Type:** Code module + unit tests
 
 ### M5-B3: Integration Test Fixture
