@@ -127,8 +127,9 @@ Any state ──deinit()──► (destroyed)
 ### apply
 
 - Signature: `apply() usize`
-- Drains the in-memory pending queue in full; no partial application.
-- Returns count of bytes consumed; returns 0 if queue was empty.
+- With attached transport: attempts `transport.write(pending)` and drains only the written prefix.
+- With no transport attached: feeds pending bytes directly to the engine and drains in full.
+- Returns count of bytes drained in this call; returns 0 if queue was empty or write made no progress.
 - Caller drives apply; session does not self-trigger application.
 
 ### reset
@@ -245,7 +246,7 @@ Hosts observe the following fields and call the following methods on `Session`:
 - `start(self: *Session) anyerror!void` — activate transport
 - `stop(self: *Session) void` — deactivate transport
 - `feed(self: *Session, bytes: []const u8) error{OutOfMemory, QueueFull}!void` — queue input
-- `apply(self: *Session) usize` — drain pending queue
+- `apply(self: *Session) usize` — attempt pending flush and report drained count
 - `reset(self: *Session) void` — clear pending queue
 - `resize(self: *Session, cols: u16, rows: u16) anyerror!void` — notify resize
 - `control(self: *Session, signal: ControlSignal) void` — route control signal

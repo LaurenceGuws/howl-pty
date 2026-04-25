@@ -123,7 +123,7 @@ pub const Session = struct {
                 // Outbound: flush host input to transport (e.g., PTY stdin)
                 const written = t.write(self.pending.items) catch {
                     self.ops.apply_transport_write_errors += 1;
-                    // Write failed: preserve pending bytes for retry (no fallback)
+                    // Write failed: preserve pending bytes for retry.
                     return 0;
                 };
                 drained = written;
