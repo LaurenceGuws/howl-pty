@@ -150,10 +150,17 @@ pub const Session = struct {
             self.ops.resize_invalid_calls += 1;
             return error.InvalidDimensions;
         }
+        // Update session dimensions
         self.cols = cols;
         self.rows = rows;
         self.resize_count +%= 1;
         self.ops.resize_valid_calls += 1;
+
+        // Recreate engine with new dimensions to keep VT state consistent
+        self.engine.deinit();
+        self.engine = try vt_core.runtime.Engine.initWithCells(self.allocator, rows, cols);
+
+        // Notify transport if attached
         if (self.transport) |t| t.resize(cols, rows) catch |err| {
             self.ops.resize_transport_errors += 1;
             return err;
@@ -1576,7 +1583,7 @@ test "vt_core integration: deterministic behavior across cycles (null transport)
     try std.testing.expectEqual(seq1_after_abc, seq2_after_abc);
 }
 
-test "vt_core integration: resize updates session not engine (MVP limitation)" {
+test "vt_core integration: resize keeps session and engine dims consistent" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80, .rows = 24, .pending_capacity = 256,
@@ -1592,10 +1599,10 @@ test "vt_core integration: resize updates session not engine (MVP limitation)" {
     try std.testing.expectEqual(@as(u16, 132), s.cols);
     try std.testing.expectEqual(@as(u16, 50), s.rows);
 
-    // Engine dimensions not yet updated (future enhancement)
+    // Engine dimensions now match session (engine was recreated with new dims)
     const screen_after = s.engine.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen_after.cols);
-    try std.testing.expectEqual(@as(u16, 24), screen_after.rows);
+    try std.testing.expectEqual(@as(u16, 132), screen_after.cols);
+    try std.testing.expectEqual(@as(u16, 50), screen_after.rows);
 }
 
 test "vt_core integration: reset clears pending but preserves engine" {
