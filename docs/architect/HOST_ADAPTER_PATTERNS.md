@@ -128,17 +128,22 @@ if (written == 0) {
 
 #### `session.feedProcessOutput()`
 ```zig
-read_output = session.feedProcessOutput(buf) catch |err| {
-  switch (err) {
-    else => {
-      // Engine feed failed (very rare; engine does not allocate)
-      // Log error; do not retry (engine may be corrupted)
-      // Consider shutdown
+// Signature: feedProcessOutput(bytes: []const u8) !void
+// Pass bytes already read from transport
+var buf: [2048]u8 = undefined;
+var bytes_read = transport.read(&buf) catch 0;
+if (bytes_read > 0) {
+  session.feedProcessOutput(buf[0..bytes_read]) catch |err| {
+    switch (err) {
+      else => {
+        // Engine feed failed (very rare; engine does not allocate)
+        // Log error; do not retry (engine may be corrupted)
+        // Consider shutdown
+      }
     }
-  }
+  };
 }
-// Returns count of bytes fed to engine
-// If 0, no data was available; normal, do not retry
+// No return value; drives engine feed to completion
 ```
 
 #### `session.resize(cols, rows)`
