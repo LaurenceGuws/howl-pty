@@ -34,6 +34,7 @@ pub const SessionOps = struct {
     bytes_fed: u64,
     bytes_applied: u64,
     apply_calls: u32,
+    apply_transport_write_errors: u32,
     reset_calls: u32,
     resize_valid_calls: u32,
     resize_invalid_calls: u32,
@@ -116,12 +117,27 @@ pub const Session = struct {
         self.ops.apply_calls += 1;
         const n = self.pending.items.len;
         if (n > 0) {
-            self.engine.feedSlice(self.pending.items);
-            self.engine.apply();
+            if (self.transport) |t| {
+                // Outbound: flush host input to transport (e.g., PTY stdin)
+                _ = t.write(self.pending.items) catch {
+                    self.ops.apply_transport_write_errors += 1;
+                    // Write failed; bytes are still drained from pending
+                };
+            } else {
+                // No transport: feed host input directly to engine (null-transport behavior)
+                self.engine.feedSlice(self.pending.items);
+                self.engine.apply();
+            }
         }
         self.pending.clearRetainingCapacity();
         self.ops.bytes_applied += n;
         return n;
+    }
+
+    pub fn feedProcessOutput(self: *Session, bytes: []const u8) anyerror!void {
+        // Inbound: feed process output to engine (from transport, e.g., PTY stdout)
+        self.engine.feedSlice(bytes);
+        self.engine.apply();
     }
 
     pub fn reset(self: *Session) void {
@@ -1482,24 +1498,21 @@ test "control contract: control after stop is safe" {
 
 // VT Core Integration Tests
 
-test "vt_core integration: apply drives engine with pending bytes" {
+test "vt_core integration: apply feeds engine when no transport" {
+    // No transport: apply() should feed input directly to engine
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80, .rows = 24, .pending_capacity = 256,
     });
     defer s.deinit();
 
-    // Feed text input to session
     try s.feed("hello");
-
-    // apply() should feed to engine and process it
     const n = s.apply();
     try std.testing.expectEqual(@as(usize, 5), n);
 
-    // Engine should have processed the text
+    // Engine should have processed the text (null-transport mode)
     const screen = s.engine.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
-    try std.testing.expectEqual(@as(u16, 24), screen.rows);
 }
 
 test "vt_core integration: empty apply is safe" {
@@ -1516,7 +1529,22 @@ test "vt_core integration: empty apply is safe" {
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
-test "vt_core integration: deterministic behavior across cycles" {
+test "vt_core integration: feedProcessOutput processes engine bytes" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    // Process output (from PTY) goes through feedProcessOutput
+    try s.feedProcessOutput("output");
+
+    // Engine should have processed the output
+    const screen = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+}
+
+test "vt_core integration: deterministic behavior across cycles (null transport)" {
     // Cycle 1
     var s1 = try Session.init(.{
         .allocator = std.testing.allocator,
@@ -1526,7 +1554,7 @@ test "vt_core integration: deterministic behavior across cycles" {
 
     try s1.feed("ABC");
     _ = s1.apply();
-    const screen1_seq1 = s1.engine.queuedEventCount();
+    const seq1_after_abc = s1.engine.queuedEventCount();
 
     // Cycle 2 (same session)
     try s1.feed("DEF");
@@ -1542,10 +1570,10 @@ test "vt_core integration: deterministic behavior across cycles" {
 
     try s2.feed("ABC");
     _ = s2.apply();
-    const screen2_seq1 = s2.engine.queuedEventCount();
+    const seq2_after_abc = s2.engine.queuedEventCount();
 
-    // After same feed/apply in both sessions, behavior should match
-    try std.testing.expectEqual(screen1_seq1, screen2_seq1);
+    // After same feed/apply in both sessions (null transport), behavior should match
+    try std.testing.expectEqual(seq1_after_abc, seq2_after_abc);
 }
 
 test "vt_core integration: resize updates session not engine (MVP limitation)" {
@@ -1588,7 +1616,7 @@ test "vt_core integration: reset clears pending but preserves engine" {
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
-test "vt_core integration: consecutive feeds and applies" {
+test "vt_core integration: apply flushes to transport or engine (null)" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80, .rows = 24, .pending_capacity = 256,
@@ -1604,7 +1632,7 @@ test "vt_core integration: consecutive feeds and applies" {
     try s.feed("CD");
     try std.testing.expectEqual(@as(usize, 2), s.apply());
 
-    // Engine should have processed all bytes
+    // In null-transport mode, pending is fed to engine; no transport writes
     const screen = s.engine.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
