@@ -6,6 +6,7 @@ const _unix_pty = @import("transport/unix_pty.zig");
 
 pub const Transport = _interface.Transport;
 pub const MemTransport = _mem.MemTransport;
+pub const PartialTransport = _mem.PartialTransport;
 pub const FailTransport = _fail.FailTransport;
 pub const UnixPtyTransport = _unix_pty.UnixPtyTransport;
 

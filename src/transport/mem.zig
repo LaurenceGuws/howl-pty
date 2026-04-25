@@ -206,3 +206,95 @@ test "control records last signal" {
     t.control(.interrupt);
     try std.testing.expectEqual(ControlSignal.interrupt, mt.last_signal.?);
 }
+
+pub const PartialTransport = struct {
+    allocator: std.mem.Allocator,
+    started: bool,
+    max_bytes: usize,
+    tx: std.ArrayListUnmanaged(u8),
+
+    pub fn init(allocator: std.mem.Allocator, max_bytes: usize) PartialTransport {
+        return .{
+            .allocator = allocator,
+            .started = false,
+            .max_bytes = max_bytes,
+            .tx = .empty,
+        };
+    }
+
+    pub fn deinit(self: *PartialTransport) void {
+        self.tx.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn transport(self: *PartialTransport) Transport {
+        return .{ .ptr = self, .vtable = &partialVtable };
+    }
+
+    const partialVtable: Transport.VTable = .{
+        .start = startImpl,
+        .stop = stopImpl,
+        .write = writeImpl,
+        .read = readImpl,
+        .resize = resizeImpl,
+        .control = controlImpl,
+    };
+
+    fn startImpl(ptr: *anyopaque) anyerror!void {
+        const self: *PartialTransport = @ptrCast(@alignCast(ptr));
+        if (self.started) return error.AlreadyStarted;
+        self.started = true;
+    }
+
+    fn stopImpl(ptr: *anyopaque) void {
+        const self: *PartialTransport = @ptrCast(@alignCast(ptr));
+        self.started = false;
+    }
+
+    fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+        const self: *PartialTransport = @ptrCast(@alignCast(ptr));
+        if (!self.started) return error.NotStarted;
+        const n = @min(bytes.len, self.max_bytes);
+        try self.tx.appendSlice(self.allocator, bytes[0..n]);
+        return n;
+    }
+
+    fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
+        _ = ptr;
+        _ = buf;
+        return 0;
+    }
+
+    fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+        _ = ptr;
+        _ = cols;
+        _ = rows;
+    }
+
+    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+        _ = ptr;
+        _ = signal;
+    }
+};
+
+test "PartialTransport write accepts only max_bytes" {
+    var pt = PartialTransport.init(std.testing.allocator, 3);
+    defer pt.deinit();
+    var t = pt.transport();
+    try t.start();
+    const n = try t.write("hello");
+    try std.testing.expectEqual(@as(usize, 3), n);
+    try std.testing.expectEqualSlices(u8, "hel", pt.tx.items);
+}
+
+test "PartialTransport repeated writes accumulate" {
+    var pt = PartialTransport.init(std.testing.allocator, 2);
+    defer pt.deinit();
+    var t = pt.transport();
+    try t.start();
+    const n1 = try t.write("hello");
+    const n2 = try t.write("world");
+    try std.testing.expectEqual(@as(usize, 2), n1);
+    try std.testing.expectEqual(@as(usize, 2), n2);
+    try std.testing.expectEqualSlices(u8, "hewo", pt.tx.items);
+}
