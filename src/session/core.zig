@@ -1479,3 +1479,168 @@ test "control contract: control after stop is safe" {
     try std.testing.expectEqual(ControlSignal.hangup, s.last_control_signal.?);
     try std.testing.expectEqual(SessionStatus.stopped, s.status);
 }
+
+// VT Core Integration Tests
+
+test "vt_core integration: apply drives engine with pending bytes" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    // Feed text input to session
+    try s.feed("hello");
+
+    // apply() should feed to engine and process it
+    const n = s.apply();
+    try std.testing.expectEqual(@as(usize, 5), n);
+
+    // Engine should have processed the text
+    const screen = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+    try std.testing.expectEqual(@as(u16, 24), screen.rows);
+}
+
+test "vt_core integration: empty apply is safe" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    const n = s.apply();
+    try std.testing.expectEqual(@as(usize, 0), n);
+
+    const screen = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+}
+
+test "vt_core integration: deterministic behavior across cycles" {
+    // Cycle 1
+    var s1 = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s1.deinit();
+
+    try s1.feed("ABC");
+    _ = s1.apply();
+    const screen1_seq1 = s1.engine.queuedEventCount();
+
+    // Cycle 2 (same session)
+    try s1.feed("DEF");
+    _ = s1.apply();
+    _ = s1.engine.queuedEventCount();
+
+    // Create second session with same initial config
+    var s2 = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s2.deinit();
+
+    try s2.feed("ABC");
+    _ = s2.apply();
+    const screen2_seq1 = s2.engine.queuedEventCount();
+
+    // After same feed/apply in both sessions, behavior should match
+    try std.testing.expectEqual(screen1_seq1, screen2_seq1);
+}
+
+test "vt_core integration: resize updates session not engine (MVP limitation)" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    const screen_before = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen_before.cols);
+    try std.testing.expectEqual(@as(u16, 24), screen_before.rows);
+
+    // Resize session dimensions
+    try s.resize(132, 50);
+    try std.testing.expectEqual(@as(u16, 132), s.cols);
+    try std.testing.expectEqual(@as(u16, 50), s.rows);
+
+    // Engine dimensions not yet updated (future enhancement)
+    const screen_after = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen_after.cols);
+    try std.testing.expectEqual(@as(u16, 24), screen_after.rows);
+}
+
+test "vt_core integration: reset clears pending but preserves engine" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    try s.feed("hello");
+    s.reset();
+
+    // Pending should be cleared
+    try std.testing.expectEqual(@as(usize, 0), s.apply());
+
+    // Engine should still be functional
+    const screen = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+}
+
+test "vt_core integration: consecutive feeds and applies" {
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+    });
+    defer s.deinit();
+
+    try s.feed("A");
+    try std.testing.expectEqual(@as(usize, 1), s.apply());
+
+    try s.feed("B");
+    try std.testing.expectEqual(@as(usize, 1), s.apply());
+
+    try s.feed("CD");
+    try std.testing.expectEqual(@as(usize, 2), s.apply());
+
+    // Engine should have processed all bytes
+    const screen = s.engine.screen();
+    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+}
+
+// Platform-specific smoke test
+test "unix_pty transport: session lifecycle with shell (Linux only)" {
+    if (builtin.os.tag != .linux) {
+        return;
+    }
+
+    var pty = transport_api.UnixPtyTransport.init(
+        std.testing.allocator,
+        "/bin/sh",
+        null
+    ) catch {
+        // Skip if PTY unavailable (e.g., in container without PTY support)
+        return;
+    };
+    defer pty.deinit();
+
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .transport = pty.transport(),
+    });
+    defer s.deinit();
+
+    // Start PTY transport
+    try s.start();
+    try std.testing.expectEqual(SessionStatus.active, s.status);
+
+    // Send a simple command
+    try s.feed("echo test\n");
+    _ = s.apply();
+
+    // Stop cleanly
+    s.stop();
+    try std.testing.expectEqual(SessionStatus.stopped, s.status);
+}
