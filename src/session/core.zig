@@ -116,22 +116,36 @@ pub const Session = struct {
     pub fn apply(self: *Session) usize {
         self.ops.apply_calls += 1;
         const n = self.pending.items.len;
+        var drained: usize = 0;
+
         if (n > 0) {
             if (self.transport) |t| {
                 // Outbound: flush host input to transport (e.g., PTY stdin)
-                _ = t.write(self.pending.items) catch {
+                const written = t.write(self.pending.items) catch {
                     self.ops.apply_transport_write_errors += 1;
-                    // Write failed; bytes are still drained from pending
+                    // Write failed: preserve pending bytes for retry (no fallback)
+                    return 0;
                 };
+                drained = written;
+                // Partial write: shift unwritten tail to front, then shrink
+                if (written < n) {
+                    std.mem.copyForwards(u8, self.pending.items[0..n-written], self.pending.items[written..n]);
+                    self.pending.shrinkRetainingCapacity(n - written);
+                } else {
+                    // Full write: clear entire queue
+                    self.pending.clearRetainingCapacity();
+                }
             } else {
                 // No transport: feed host input directly to engine (null-transport behavior)
                 self.engine.feedSlice(self.pending.items);
                 self.engine.apply();
+                drained = n;
+                self.pending.clearRetainingCapacity();
             }
         }
-        self.pending.clearRetainingCapacity();
-        self.ops.bytes_applied += n;
-        return n;
+
+        self.ops.bytes_applied += drained;
+        return drained;
     }
 
     pub fn feedProcessOutput(self: *Session, bytes: []const u8) anyerror!void {
@@ -150,15 +164,21 @@ pub const Session = struct {
             self.ops.resize_invalid_calls += 1;
             return error.InvalidDimensions;
         }
-        // Update session dimensions
+
+        // RC2: Create new engine first (transactional safety)
+        // If this fails, current engine remains valid and state unchanged
+        const new_engine = try vt_core.runtime.Engine.initWithCells(self.allocator, rows, cols);
+
+        // On success: swap engines (current engine becomes unreachable, new engine active)
+        var old_engine = self.engine;
+        self.engine = new_engine;
+        old_engine.deinit();
+
+        // Update session state (now that engine is safely in place)
         self.cols = cols;
         self.rows = rows;
         self.resize_count +%= 1;
         self.ops.resize_valid_calls += 1;
-
-        // Recreate engine with new dimensions to keep VT state consistent
-        self.engine.deinit();
-        self.engine = try vt_core.runtime.Engine.initWithCells(self.allocator, rows, cols);
 
         // Notify transport if attached
         if (self.transport) |t| t.resize(cols, rows) catch |err| {
@@ -691,8 +711,10 @@ test "feed/apply/reset unaffected after start failure" {
     defer s.deinit();
     try std.testing.expectError(error.TransportFailed, s.start());
     try s.feed("hello");
-    try std.testing.expectEqual(@as(usize, 5), s.apply());
-    try s.feed("world");
+    // Transport write fails: apply returns 0, pending preserved
+    try std.testing.expectEqual(@as(usize, 0), s.apply());
+    try std.testing.expectEqual(@as(usize, 5), s.pending.items.len);
+    // Reset clears pending
     s.reset();
     try std.testing.expectEqual(@as(usize, 0), s.apply());
 }
@@ -1263,7 +1285,9 @@ test "lifecycle error-path stability: transport failure leaves session recoverab
     try conformance_checkpoint.ConformanceCheckpoint.expectEqual(baseline, after_fail);
 
     try s.feed("data");
-    try std.testing.expectEqual(@as(usize, 4), s.apply());
+    // Transport write fails: apply returns 0, pending preserved
+    try std.testing.expectEqual(@as(usize, 0), s.apply());
+    try std.testing.expectEqual(@as(usize, 4), s.pending.items.len);
 
     try std.testing.expectEqual(SessionStatus.idle, s.status);
 }
@@ -1732,3 +1756,99 @@ test "regression: R2 resize consistency — engine dims match session" {
     try std.testing.expectEqual(@as(u16, 40), screen.rows);
 }
 
+
+// ============================================================================
+// LMVP-RC1: Partial-write correctness tests
+// ============================================================================
+
+test "RC1: apply full write drains all pending" {
+    var mt = transport_api.MemTransport.init(std.testing.allocator);
+    defer mt.deinit();
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .transport = mt.transport(),
+    });
+    defer s.deinit();
+
+    try s.start();
+    try s.feed("hello");
+    try std.testing.expectEqual(@as(usize, 5), s.pending.items.len);
+
+    const drained = s.apply();
+    try std.testing.expectEqual(@as(usize, 5), drained);
+    try std.testing.expectEqual(@as(usize, 0), s.pending.items.len);
+}
+
+test "RC1: apply partial write keeps unwritten tail" {
+    // Partial write transport (writes only first 3 bytes of 5)
+    var pt = transport_api.PartialTransport.init(std.testing.allocator, 3);
+    defer pt.deinit();
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .transport = pt.transport(),
+    });
+    defer s.deinit();
+
+    try s.start();
+    try s.feed("hello");
+    try std.testing.expectEqual(@as(usize, 5), s.pending.items.len);
+
+    const drained = s.apply();
+    try std.testing.expectEqual(@as(usize, 3), drained);
+    try std.testing.expectEqual(@as(usize, 2), s.pending.items.len);
+    // Verify tail is "lo" (last 2 bytes of "hello")
+    try std.testing.expectEqualSlices(u8, "lo", s.pending.items);
+}
+
+test "RC1: repeated apply drains retained tail" {
+    var pt = transport_api.PartialTransport.init(std.testing.allocator, 2);
+    defer pt.deinit();
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .transport = pt.transport(),
+    });
+    defer s.deinit();
+
+    try s.start();
+    try s.feed("hello");
+
+    // First apply: 2 bytes written ("he"), 3 retained ("llo")
+    var drained = s.apply();
+    try std.testing.expectEqual(@as(usize, 2), drained);
+    try std.testing.expectEqual(@as(usize, 3), s.pending.items.len);
+
+    // Second apply: 2 more bytes written ("ll"), 1 retained ("o")
+    drained = s.apply();
+    try std.testing.expectEqual(@as(usize, 2), drained);
+    try std.testing.expectEqual(@as(usize, 1), s.pending.items.len);
+
+    // Third apply: final 1 byte written ("o"), queue empty
+    drained = s.apply();
+    try std.testing.expectEqual(@as(usize, 1), drained);
+    try std.testing.expectEqual(@as(usize, 0), s.pending.items.len);
+}
+
+test "RC1: zero-byte write preserves pending for retry" {
+    // PartialTransport with max_bytes=0 simulates a "not ready" state
+    var pt = transport_api.PartialTransport.init(std.testing.allocator, 0);
+    defer pt.deinit();
+    var s = try Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .transport = pt.transport(),
+    });
+    defer s.deinit();
+
+    try s.start();
+    try s.feed("hello");
+    try std.testing.expectEqual(@as(usize, 5), s.pending.items.len);
+
+    const drained = s.apply();
+    try std.testing.expectEqual(@as(usize, 0), drained);
+    // Pending should be preserved (5 bytes retained for retry)
+    try std.testing.expectEqual(@as(usize, 5), s.pending.items.len);
+    try std.testing.expectEqualSlices(u8, "hello", s.pending.items);
+}
