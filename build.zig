@@ -4,12 +4,19 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const vt_core_dep = b.dependency("vt_core", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const vt_core_mod = vt_core_dep.module("vt_core");
+
     const mod = b.addModule("howl_session", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
+    mod.addImport("vt_core", vt_core_mod);
 
     const mod_tests = b.addTest(.{
         .root_module = mod,

@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const types = @import("../types.zig");
 const transport_api = @import("../transport.zig");
+const vt_core = @import("vt_core");
 
 pub const ControlSignal = types.ControlSignal;
 pub const SessionStatus = types.SessionStatus;
@@ -48,13 +49,15 @@ pub const Session = struct {
     pending: std.ArrayListUnmanaged(u8),
     pending_capacity: usize,
     transport: ?Transport,
+    engine: vt_core.runtime.Engine,
     resize_count: u32,
     last_control_signal: ?ControlSignal,
     ops: SessionOps,
 
-    pub fn init(config: Config) error{InvalidConfig}!Session {
+    pub fn init(config: Config) anyerror!Session {
         if (config.cols == 0 or config.rows == 0) return error.InvalidConfig;
         if (config.pending_capacity == 0) return error.InvalidConfig;
+        const engine = try vt_core.runtime.Engine.initWithCells(config.allocator, config.rows, config.cols);
         return .{
             .allocator = config.allocator,
             .cols = config.cols,
@@ -63,6 +66,7 @@ pub const Session = struct {
             .pending = .empty,
             .pending_capacity = config.pending_capacity,
             .transport = config.transport,
+            .engine = engine,
             .resize_count = 0,
             .last_control_signal = null,
             .ops = std.mem.zeroes(SessionOps),
@@ -71,6 +75,7 @@ pub const Session = struct {
 
     pub fn deinit(self: *Session) void {
         self.pending.deinit(self.allocator);
+        self.engine.deinit();
         self.* = undefined;
     }
 
@@ -110,6 +115,10 @@ pub const Session = struct {
     pub fn apply(self: *Session) usize {
         self.ops.apply_calls += 1;
         const n = self.pending.items.len;
+        if (n > 0) {
+            self.engine.feedSlice(self.pending.items);
+            self.engine.apply();
+        }
         self.pending.clearRetainingCapacity();
         self.ops.bytes_applied += n;
         return n;
