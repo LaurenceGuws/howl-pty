@@ -49,11 +49,12 @@ LOOP: poll SDL/input events
   ├─ for each control signal (Ctrl+C, etc):
   │   └─ session.control(signal)  [record signal; notify transport]
   │
-  └─ APPLY PHASE:
-      ├─ written = session.apply()  [attempt pending → transport]
-      ├─ read_output = session.feedProcessOutput(buf)  [drive engine]
-      └─ if written > 0 or read_output > 0:
-          └─ surface.updateCells(engine.cells())  [refresh display]
+  └─ I/O PHASE:
+      ├─ written = session.apply()  [outbound: flush pending to transport]
+      ├─ bytes_read = transport.read(buf)  [read inbound output from transport]
+      ├─ session.feedProcessOutput(buf[0..bytes_read])  [inbound: feed to engine]
+      └─ if written > 0 or bytes_read > 0:
+          └─ query surface for frame state and refresh display
 ```
 
 ### Ordering Guarantees
@@ -61,8 +62,9 @@ LOOP: poll SDL/input events
 1. **Input feeds precede apply:** All `feed()` calls must happen before `apply()` in the loop.
    - Rationale: `apply()` drains the queue; feeding after would delay dispatch to the next loop.
 
-2. **Apply is atomic from host perspective:** One `apply()` call drains all written bytes and feeds output to engine.
-   - Rationale: Transport.write() is async; multiple apply() calls in one loop risk out-of-order writes.
+2. **Apply drains outbound queue only:** `apply()` attempts to flush pending input bytes to the transport via transport.write().
+   - Does NOT process inbound output; that is feedProcessOutput's responsibility.
+   - Rationale: Separates outbound write from inbound read for clarity and to avoid conflating two independent phases.
 
 3. **Resize and control are async:** Resize/control are recorded and routed to transport immediately.
    - Not queued; safe to call at any point in the loop.
@@ -210,7 +212,7 @@ A minimal SDL host fixture demonstrates the pattern without production concerns:
 
 ### SDL Host Init
 ```zig
-var session = try Session.init(allocator, SessionConfig{
+var session = try Session.init(.{
   .allocator = allocator,
   .cols = 80,
   .rows = 24,
@@ -218,7 +220,7 @@ var session = try Session.init(allocator, SessionConfig{
   .transport = sdl_pty_transport,  // UnixPtyTransport wrapped
 });
 
-var surface = try Surface.init(allocator, SurfaceConfig{
+var surface = try Surface.init(.{
   .allocator = allocator,
   .cols = 80,
   .rows = 24,
@@ -254,14 +256,19 @@ while (running) {
     }
   }
 
-  // Apply phase
-  _ = session.apply();
+  // I/O phase: outbound
+  _ = session.apply();  // flush pending input to transport
+  
+  // I/O phase: inbound
   var buf: [2048]u8 = undefined;
-  _ = session.feedProcessOutput(&buf) catch {};
+  var bytes_read = transport.read(&buf) catch 0;
+  if (bytes_read > 0) {
+    session.feedProcessOutput(buf[0..bytes_read]) catch {};
+  }
   
   // Render phase
-  surface.updateCells(engine.cells());
-  renderFrameToSDL(surface);
+  var frame = surface.frameData();  // query current frame state
+  renderFrameToSDL(frame);
   sdl.SDL_RenderPresent(renderer);
 }
 
@@ -311,17 +318,17 @@ surface.deinit();
 | Pattern Element | API.md Contract | Fixture Compliance |
 | --- | --- | --- |
 | Resize commits dims before transport notification | Dims authoritative; not rolled back on transport error | ✓ session.resize() commits; surface.resize() separate |
-| Resize increments epoch counter | `resize_count` increments on every valid resize | ✓ Checked by test; fixture does not read, but guaranteed |
-| Control records signal and routes to transport | `last_control_signal` recorded; transport.control() called | ✓ session.control() alone is safe |
-| Sequencing guarantee on resize/control | Valid in any state between init and deinit | ✓ No state guard; safe before/after start/stop |
+| Resize increments epoch counter | `resize_count` increments (observable; not verified in fixture) | ✓ Available via session.resize_count |
+| Control records signal and routes to transport | `last_control_signal` recorded; transport.control() called | ✓ session.control() routes to transport |
+| Sequencing guarantee on resize/control | Valid in any state between init and deinit | ✓ No state guard required; safe before/after start/stop |
 
 ### Lifecycle Boundary Compliance
 | Pattern Element | API.md Contract | Fixture Compliance |
 | --- | --- | --- |
-| start() activates transport | `start() → anyerror!void` (from idle/stopped only) | ✓ Single session.start() before loop |
+| start() activates transport | `start() → anyerror!void` (idle/stopped allowed) | ✓ Single session.start() before loop |
 | stop() deactivates transport | `stop() → void` (idempotent) | ✓ Single session.stop() on quit |
-| Repeated start() after stop() is valid | Restart from stopped is supported | ✓ Can call start() again (not exercised in fixture) |
-| deinit() releases all resources | Must be called exactly once per init | ✓ Single session.deinit() and surface.deinit() |
+| start() returns error if already active | AlreadyStarted error from active state | ✓ Checked in error-handling section |
+| deinit() releases all resources | Must be called exactly once per init | ✓ Single session.deinit() in cleanup |
 
 ### State Machine Compliance
 | Transition | API.md Contract | Fixture Compliance |
