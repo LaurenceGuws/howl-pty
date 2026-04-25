@@ -74,12 +74,34 @@ LMVP-RC quality correction batch complete. All defects resolved and validated. Q
 | `TH-3` | done | VS Code debug config (tasks.json, launch.json) |
 | `TH-4` | done | Platform gating verification (explicit Linux guard on unix_pty tests) |
 
-## M5-B Planning (Integration Patterns and Multi-Host Support)
+## TH (Test Hygiene) Closeout
 
-Queue definition pending. Planned scope:
-1. Define host adapter interface and contract
-2. Add integration patterns guide (async loop, error handling, resize coordination)
-3. Plan conformance patterns for multiple host types
+**Phase complete.** Package-context test authority: `zig build test` (140 tests passing). Known intentional limits: cross-module tests require build context.
+
+## M5-B (Integration Patterns and Multi-Host Support - Bounded)
+
+| Ticket | Status | Intent | Target | Change Type |
+| --- | --- | --- | --- | --- |
+| `M5-B1` | pending | Host adapter pattern guide | `docs/architect/HOST_ADAPTER_PATTERNS.md` | Documentation (new) |
+| `M5-B2` | pending | Session async loop envelope | `src/ops/host_loop.zig` | New module |
+| `M5-B3` | pending | Integration test fixture (SDL host) | `src/conformance/host_integration_test.zig` | New module |
+| `M5-B4` | pending | Queue closeout and evidence | (commit only) | Documentation + test validation |
+
+### M5-B Scope
+- Host integration envelope (async loop, event model, error recovery)
+- Session lifecycle coordination with host
+- Minimal SDL host binding (integration test fixture, not production)
+- Cross-session resize and async patterns
+
+### M5-B Non-Goals
+- Multi-host production adapters (host repo responsibility)
+- Platform-specific integration (deferred to per-host repos)
+- Optimization of loop latency or throughput
+
+### M5-B Stop Conditions
+- Cannot proceed if host adapter pattern requires changes to Session vtable or core API
+- Cannot proceed if pattern requires platform types in session/core modules
+- Cannot proceed if integration test requires external (non-Zig) dependencies
 
 Guardrail: One ticket per commit. Mandatory validation per ticket:
 - `zig build`
