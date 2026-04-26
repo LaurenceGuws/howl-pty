@@ -2,7 +2,7 @@
 
 ## Overview
 
-M5-B: Integration Patterns and Multi-Host Support batch complete. All 4 tickets closed with evidence.
+M5-B: Integration Rules and Multi-Host Support batch complete. All 4 tickets closed with evidence.
 
 **Completion Date:** 2026-04-25  
 **Tickets:** M5-B1, M5-B2, M5-B3, M5-B4  
@@ -12,18 +12,18 @@ M5-B: Integration Patterns and Multi-Host Support batch complete. All 4 tickets 
 
 ## Ticket → Artifact Mapping
 
-### M5-B1: Host Adapter Pattern Guide
-- **Target:** `docs/architect/HOST_ADAPTER_PATTERNS.md`
-- **Deliverable:** Comprehensive pattern documentation
+### M5-B1: Host Integration Pattern Guide
+- **Target:** `docs/architect/HOST_SESSION_LOOP_CONTRACT.md`
+- **Deliverable:** Comprehensive rule documentation
 - **Key Content:**
-  - Host adapter responsibilities and boundaries
+  - Host implementation responsibilities and boundaries
   - Async feed/apply loop envelope with ordering guarantees
-  - Error-handling patterns (start/write/read/resize/control)
-  - Resize coordination pattern
-  - Minimal SDL fixture pattern (test-only reference)
+  - Error-handling rules (start/write/read/resize/control)
+  - Resize coordination rule
+  - Minimal host-loop fixture (test-only reference)
   - Pattern validation tables against API.md
 - **Commits:**
-  - `84363f1` — M5-B1: Host adapter pattern guide (initial)
+  - `84363f1` — M5-B1: Host implementation rule guide (initial)
   - `96bac9c` — M5-B1 (revision): Fix contract-breaking guidance
   - `f9a5de1` — M5-B1 (final): Correct feedProcessOutput signature
 - **Evidence Type:** Documentation contract
@@ -43,7 +43,7 @@ M5-B: Integration Patterns and Multi-Host Support batch complete. All 4 tickets 
 
 ### M5-B3: Integration Test Fixture
 - **Target:** `src/conformance/host_integration_test.zig`
-- **Deliverable:** End-to-end host pattern validation
+- **Deliverable:** End-to-end host loop validation
 - **Key Content:**
   - 11 focused integration tests
   - Uses MemTransport and PartialTransport
@@ -51,7 +51,7 @@ M5-B: Integration Patterns and Multi-Host Support batch complete. All 4 tickets 
   - Tests resize/control ordering, partial progress, lifecycle
   - All deterministic (no timers, no external I/O)
 - **Commits:**
-  - `8a634a9` — M5-B3: Integration test fixture (host pattern validation)
+  - `8a634a9` — M5-B3: Integration test fixture (host loop validation)
 - **Test Count Impact:** +11 tests (146 → 157 total)
 - **Evidence Type:** Integration test fixture
 
@@ -117,7 +117,7 @@ Build Summary: 3/3 steps succeeded; 157/157 tests passed
 ### Pattern Validation
 ```
 $ rg -n "compat[^ib]|fallback|workaround|shim" --glob '*.zig' src
-✓ No forbidden patterns
+✓ No forbidden language
 ```
 
 ### No API Signature Changes
@@ -136,14 +136,14 @@ $ rg -n "compat[^ib]|fallback|workaround|shim" --glob '*.zig' src
 - ✓ No SDL/platform types in session/core modules
 - ✓ No session API signature changes
 - ✓ No behavior changes to existing methods
-- ✓ No fallback/shim/workaround patterns
+- ✓ No fallback/shim/workaround language
 - ✓ host_loop is envelope utility (not runtime subsystem)
 - ✓ Integration fixture is test-only (no production logic)
 
 ### Documentation Constraints
-- ✓ HOST_ADAPTER_PATTERNS.md contracts validated against API.md
+- ✓ HOST_SESSION_LOOP_CONTRACT.md contracts validated against API.md
 - ✓ Ordering guarantees explicitly documented
-- ✓ Error handling patterns provided for all operations
+- ✓ Error handling rules provided for all operations
 - ✓ Non-goals and stop conditions clearly stated
 
 ---
@@ -153,7 +153,7 @@ $ rg -n "compat[^ib]|fallback|workaround|shim" --glob '*.zig' src
 ### Out of Scope (Deferred)
 - **M6 Conformance Evidence:** Session behavior equivalence checks (next milestone)
 - **M7 Performance Discipline:** Loop latency and resource bounds (next milestone)
-- **Production host adapters:** Responsibility of host repos (howl-sdl-host, howl-android-host, etc.)
+- **Production host implementations:** Responsibility of host repos (howl-sdl-host, howl-android-host, etc.)
 - **Platform-specific code:** Deferred to per-host repos
 
 ---
@@ -161,7 +161,7 @@ $ rg -n "compat[^ib]|fallback|workaround|shim" --glob '*.zig' src
 ## Next Phase Gate
 
 ### M5-B → M6 Readiness
-- ✓ Host integration patterns stable and documented
+- ✓ Host session-loop contracts stable and documented
 - ✓ host_loop envelope tested with 6+11 focused tests
 - ✓ Integration fixture validates end-to-end ordering
 - ✓ No breaking changes to Session core
@@ -187,9 +187,9 @@ $ rg -n "compat[^ib]|fallback|workaround|shim" --glob '*.zig' src
 ## Summary
 
 **M5-B batch complete with full evidence:**
-- Pattern guide (B1) documents host adapter contract and ordering
+- Pattern guide (B1) documents host implementation contract and ordering
 - Loop envelope (B2) provides reusable host-loop utility with unit tests
-- Integration fixture (B3) validates pattern end-to-end with 11 focused tests
+- Integration fixture (B3) validates rule end-to-end with 11 focused tests
 - Combined test delta: +17 tests (140 → 157)
 - **Zero API signature changes** to session core
 - All constraints satisfied; no scope drift

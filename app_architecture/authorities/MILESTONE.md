@@ -9,10 +9,10 @@ It is intentionally non-implementation-detailed.
 | --- | --- | --- |
 | `M0` | Repo Scaffold | Package compiles, tests run, authority/docs baseline exists. |
 | `M1` | Session API Foundation | Stable public session API with explicit lifecycle contracts. |
-| `M2` | Transport Foundation | Transport seam plus Unix PTY/process adapter path is deterministic and bounded. |
+| `M2` | Transport Foundation | Transport contract plus Unix PTY/process implementation path is deterministic and bounded. |
 | `M3` | Lifecycle Safety | Startup/shutdown/restart/error boundaries are explicit and tested. |
 | `M4` | Resize and Control Flow | Resize/control paths are deterministic and contract-backed. |
-| `M5` | Host Integration Readiness | Host-facing API is stable for multiple host adapters. |
+| `M5` | Host Integration Readiness | Host-facing API is stable for multiple host implementations. |
 | `M6` | Conformance Evidence | Session behavior equivalence checks are reproducible and frozen. |
 | `M7` | Performance Discipline | Session loop latency and resource bounds are measured and enforced. |
 | `M8` | Reliability Hardening | Long-run stability and failure recovery are production-grade. |

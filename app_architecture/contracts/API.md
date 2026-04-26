@@ -26,7 +26,7 @@ Typed enum of observable session states:
 
 Typed enum of transport implementation classes (informational; not part of session runtime):
 - `posix_pty` — POSIX PTY transport for Linux and macOS hosts
-- `container_bridge` — Container bridge transport for Android, iOS, and platform-managed containers
+- `container_bridge` — Container transport for Android, iOS, and platform-managed containers
 - `conpty` — ConPTY transport for Windows hosts (future)
 
 See `TRANSPORT_PORTABILITY.md` for platform abstraction details and transport class semantics.
@@ -209,7 +209,7 @@ Any state ──deinit()──► (destroyed)
 
 ### read/write delegation (future)
 
-- When session gains explicit read/write delegation, failure post-conditions will follow the same pattern: propagate error, leave session queue state unchanged.
+- When session gains explicit read/write delegation, failure post-conditions will follow the same rule: propagate error, leave session queue state unchanged.
 - Placeholder: no session queue mutation occurs on a failed delegation.
 
 ## Host-Facing API Surface (Frozen)
@@ -224,10 +224,10 @@ Hosts access the following symbols exclusively via `root.zig`:
 - `SessionStatus` — enum of observable session states
 - `TransportClass` — enum of transport implementation classes (informational)
 - `transport` — module re-export from `transport.zig`
-- `Transport` — virtual interface for transport adapters
-- `MemTransport` — in-memory test adapter
-- `FailTransport` — failure-injection test adapter
-- `UnixPtyTransport` — Unix PTY production adapter
+- `Transport` — virtual interface for transport implementations
+- `MemTransport` — in-memory test implementation
+- `FailTransport` — failure-injection test implementation
+- `UnixPtyTransport` — Unix PTY production implementation
 
 ### Session Type Observable Interface
 
@@ -263,7 +263,7 @@ Hosts provide and observe the following fields:
 | `pending_capacity` | `usize` | yes |
 | `transport` | `?Transport` | no (optional) |
 
-### Transport Adapter Interface
+### Transport Interface
 
 Transport implementations are bound through `Transport.VTable` and must match:
 

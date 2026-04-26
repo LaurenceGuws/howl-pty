@@ -78,11 +78,11 @@ M5 Host Integration Readiness complete (M5-A + M5-B). Queue ready for M6 Conform
 
 **Phase complete.** Package-context test authority: `zig build test` (140 tests passing). Known intentional limits: cross-module tests require build context.
 
-## M5-B (Integration Patterns and Multi-Host Support - Bounded)
+## M5-B (Integration Rules and Multi-Host Support - Bounded)
 
 | Ticket | Status | Commit | Intent | Target | Change Type |
 | --- | --- | --- | --- | --- | --- |
-| `M5-B1` | done | `96bac9c` | Host adapter pattern guide | `docs/architect/HOST_ADAPTER_PATTERNS.md` | Documentation (new) |
+| `M5-B1` | done | `96bac9c` | Host implementation rule guide | `docs/architect/HOST_SESSION_LOOP_CONTRACT.md` | Documentation (new) |
 | `M5-B2` | done | `e9985eb` | Session async loop envelope | `src/ops/host_loop.zig` | New module |
 | `M5-B3` | done | `8a634a9` | Integration test fixture | `src/conformance/host_integration_test.zig` | New module |
 | `M5-B4` | done | (this commit) | Queue closeout and evidence | (commit only) | Documentation + test validation |
@@ -91,25 +91,25 @@ M5 Host Integration Readiness complete (M5-A + M5-B). Queue ready for M6 Conform
 - Host integration envelope (async loop, event model, error recovery)
 - Session lifecycle coordination with host
 - Minimal SDL host binding (integration test fixture, not production)
-- Cross-session resize and async patterns
+- Cross-session resize and async rules
 
 ### M5-B Closure Summary
-**All tickets complete.** Host adapter pattern and integration scaffolding established:
+**All tickets complete.** Host implementation rule and integration scaffolding established:
 - **B1**: Documented ordering guarantees (feed → apply → feedProcessOutput) with error handling guide
 - **B2**: Implemented host_loop.tick() utility (6 unit tests, 146→152 test count)
-- **B3**: Validated pattern end-to-end with 11 integration tests (MemTransport, PartialTransport, lifecycle)
+- **B3**: Validated rule end-to-end with 11 integration tests (MemTransport, PartialTransport, lifecycle)
 - **Evidence**: docs/engineer/M5_B_EVIDENCE.md (artifact mapping, test delta, validation results)
 - **Status**: Ready for M6 Conformance Evidence phase
 
 ### M5-B Known Intentional Limits
-- No production host adapters in session repo (host repo responsibility)
+- No production host implementations in session repo (host repo responsibility)
 - No platform-specific code (host repos handle SDL, Android, browser bindings)
 - No optimization of loop latency or throughput (scope deferred to M7)
 - Integration fixture is deterministic and test-only (no timers, no external I/O)
 - No API signature changes to session core (host_loop is envelope utility, not core subsystem)
 
 ### M5-B Non-Goals
-- Multi-host production adapters (host repo responsibility)
+- Multi-host production implementations (host repo responsibility)
 - Platform-specific integration (deferred to per-host repos)
 - Optimization of loop latency or throughput
 

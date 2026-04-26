@@ -21,7 +21,7 @@ This design allows:
 
 ## Transport Classes
 
-Transport classes are implementation patterns that handle process/terminal I/O in a target environment.
+Transport classes are implementation families that handle process/terminal I/O in a target environment.
 Each class implements the `Transport` interface (start/stop/write/read/resize/control) while
 handling platform-specific concerns internally.
 
@@ -57,7 +57,7 @@ handling platform-specific concerns internally.
 **Implementation**: Future; owned by mobile host layer (e.g., `howl-android-host`)
 
 **Responsibilities**:
-- Communicate with platform container/process bridge service
+- Communicate with platform container/process service
 - Route I/O to and from embedded process/container endpoint
 - Handle platform-specific process lifecycle (activity lifecycle on Android)
 - Encapsulate all Android/iOS/platform APIs; no platform framework types leak to session
@@ -66,7 +66,7 @@ handling platform-specific concerns internally.
 
 **I/O Guarantee**: Non-blocking read/write; returns 0 if no bytes available; partial writes valid
 
-**Resize Guarantee**: Dimension change notification routed through platform bridge; failure returns error
+**Resize Guarantee**: Dimension change notification routed through platform service; failure returns error
 
 ### ConPTY (Windows target class)
 
@@ -85,7 +85,7 @@ handling platform-specific concerns internally.
 
 **Lifecycle Guarantee**: start/stop/deinit; idempotent stop; matches POSIX contract structure
 
-**I/O Guarantee**: Non-blocking patterns via platform APIs; partial writes valid
+**I/O Guarantee**: Non-blocking behavior via platform APIs; partial writes valid
 
 **Resize Guarantee**: ConPTY dimension update; failure returns error
 
@@ -161,7 +161,7 @@ Any state ──deinit()──► (destroyed)
 
 1. **No POSIX types in session core**: `howl-session` does not import `libc`, `std.posix`, `std.c`, or platform-specific Zig modules.
 2. **No SDL/Renderer/Android/iOS/Windows types in session core**: Only plain Zig types (u16, u8, error unions, allocator).
-3. **Transport implementations own platform code**: POSIX PTY, container bridge, ConPTY live in host layers or platform-specific modules.
+3. **Transport implementations own platform code**: POSIX PTY, container integration, ConPTY live in host layers or platform-specific modules.
 4. **Session is testable on any platform**: In-memory and failing transports run everywhere; POSIX PTY skips gracefully on non-Unix.
 
 ## Extension Points

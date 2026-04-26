@@ -16,7 +16,7 @@ Purpose: define what `howl-session` owns and what it does not own.
 
 ## Out of Scope
 
-- SDL/window/input adapter ownership
+- platform window/input ownership
 - renderer ownership
 - terminal semantic ownership
 - host app packaging/policy ownership

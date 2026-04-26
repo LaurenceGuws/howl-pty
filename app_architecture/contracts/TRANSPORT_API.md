@@ -2,7 +2,7 @@
 
 ## Scope
 
-This contract defines the host-neutral transport seam consumed by `howl-session`.
+This contract defines the host-neutral transport API consumed by `howl-session`.
 It does not define platform specifics (PTY, pipes, sockets, or OS APIs).
 It does not define terminal semantics or rendering concerns.
 
@@ -11,13 +11,13 @@ see `TRANSPORT_PORTABILITY.md`.
 
 ## Ownership Boundaries
 
-- `howl-session` consumes the transport seam; it does not own transport implementations.
-- Concrete transport adapters (PTY, in-memory, pipe) implement this seam and are owned by host or platform layers.
-- Session is decoupled from all platform specifics via this seam.
+- `howl-session` consumes the transport API; it does not own transport implementations.
+- Concrete transport implementations (PTY, in-memory, pipe) implement this API and are owned by host or platform layers.
+- Session is decoupled from all platform specifics via this API.
 
 ## Interface
 
-The transport seam is expressed as a vtable-backed interface type (`Transport`) with an opaque pointer to the concrete implementation.
+The transport API is expressed as a vtable-backed interface type (`Transport`) with an opaque pointer to the concrete implementation.
 Session holds an optional `?Transport`; a null transport means no transport is attached.
 
 ## Types
@@ -71,11 +71,11 @@ Error values that transport operations may return:
 - Routes a typed control signal to the transport peer.
 - No terminal semantic reinterpretation; signal semantics are transport-defined.
 - Fire-and-forget: no error channel is provided.
-- Before start/after stop behavior is adapter-defined.
+- Before start/after stop behavior is implementation-defined.
 
 ## Unix PTY/Process Adapter Guarantees
 
-The Unix PTY adapter (`UnixPtyTransport`) is the canonical process-based transport implementation.
+The Unix PTY implementation (`UnixPtyTransport`) is the canonical process-based transport implementation.
 
 ### Platform Guarantees
 

@@ -3,7 +3,7 @@
 ## Scope
 
 This contract defines the stable public surface exposed to host applications via `howl-session`.
-It governs what host adapters may depend on and what constitutes a breaking change.
+It governs what host implementations may depend on and what constitutes a breaking change.
 
 ## Stable Surface
 
@@ -18,8 +18,8 @@ All symbols listed below are exported from `src/root.zig` and are part of the fr
 | `SessionStatus` | enum | stable |
 | `ControlSignal` | enum | stable |
 | `Transport` | interface struct | stable |
-| `MemTransport` | concrete adapter | stable |
-| `FailTransport` | test adapter | stable (test scope) |
+| `MemTransport` | concrete implementation | stable |
+| `FailTransport` | test implementation | stable (test scope) |
 
 ### `SessionConfig` Required Fields
 
@@ -65,7 +65,7 @@ All symbols listed below are exported from `src/root.zig` and are part of the fr
 
 ## Breaking Change Rules
 
-The following changes to the stable surface are breaking and require a major version bump or explicit host adapter migration:
+The following changes to the stable surface are breaking and require a major version bump or explicit host implementation migration:
 
 - Removing or renaming any exported symbol above.
 - Removing or renaming a `SessionConfig` field without a default.
@@ -79,7 +79,7 @@ The following changes are NOT breaking:
 - Adding new methods to `Session`.
 - Adding new `ControlSignal` or `SessionStatus` variants.
 - Adding new optional `SessionConfig` fields with defaults.
-- Adding new transport adapter types.
+- Adding new transport implementation types.
 - Internal implementation changes that preserve observable behavior.
 
 ## Non-Goals

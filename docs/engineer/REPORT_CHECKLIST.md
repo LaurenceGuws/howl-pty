@@ -16,7 +16,7 @@ Human Rules:
 3. `//!` rule: every `.zig` file in this repo must have a module definition doc comment in this explicit format:
    - `//! Responsibility: <what this module owns>`
    - `//! Ownership: <which lane/authority owns it>`
-   - `//! Reason: <why this module exists as a seam>`
+   - `//! Reason: <why this module exists as a boundary>`
 4. `///` rule: every frozen public symbol must use concise consumer-facing docs in this explicit format:
    - `/// <intent sentence>.`
    - `/// Responsibility: <symbol responsibility>.` (only where applicable)

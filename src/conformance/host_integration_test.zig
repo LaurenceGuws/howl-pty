@@ -1,9 +1,9 @@
-//! Responsibility: validate host integration patterns against session contracts.
+//! Responsibility: validate host session-loop contracts against session contracts.
 //! Ownership: conformance evidence test suite.
 //! Reason: ensure loop and lifecycle behavior remain deterministic under composition.
 
 // Integration tests for host integration contract using session + host_loop.
-// Validates documented host pattern end-to-end: feed → apply → feedProcessOutput.
+// Validates documented host loop end-to-end: feed → apply → feedProcessOutput.
 
 const std = @import("std");
 const session_mod = @import("../session.zig");
@@ -20,7 +20,7 @@ const PartialTransport = transport_mem.PartialTransport;
 
 const testing = std.testing;
 
-test "host pattern: feed input → outbound drain via tick" {
+test "host loop: feed input → outbound drain via tick" {
     const allocator = testing.allocator;
 
     var sess = try Session.init(.{
@@ -48,7 +48,7 @@ test "host pattern: feed input → outbound drain via tick" {
     try testing.expect(result.hasProgress());
 }
 
-test "host pattern: inbound transport bytes → feedProcessOutput via tick" {
+test "host loop: inbound transport bytes → feedProcessOutput via tick" {
     const allocator = testing.allocator;
 
     var sess = try Session.init(.{
@@ -76,7 +76,7 @@ test "host pattern: inbound transport bytes → feedProcessOutput via tick" {
     try testing.expect(result.hasProgress());
 }
 
-test "host pattern: both feed and transport output in single tick" {
+test "host loop: both feed and transport output in single tick" {
     const allocator = testing.allocator;
 
     var sess = try Session.init(.{
@@ -104,7 +104,7 @@ test "host pattern: both feed and transport output in single tick" {
     try testing.expect(result.hasProgress());
 }
 
-test "host pattern: resize ordered before tick (state committed)" {
+test "host loop: resize ordered before tick (state committed)" {
     const allocator = testing.allocator;
 
     var sess = try Session.init(.{
@@ -131,7 +131,7 @@ test "host pattern: resize ordered before tick (state committed)" {
     try testing.expect(result.outbound_drained == 3);
 }
 
-test "host pattern: control signal recorded before tick" {
+test "host loop: control signal recorded before tick" {
     const allocator = testing.allocator;
 
     var sess = try Session.init(.{
@@ -156,7 +156,7 @@ test "host pattern: control signal recorded before tick" {
     try testing.expect(result.outbound_drained == 1);
 }
 
-test "host pattern: repeated ticks with partial progress" {
+test "host loop: repeated ticks with partial progress" {
     const allocator = testing.allocator;
 
     var mem_t = transport_mem.MemTransport.init(allocator);
@@ -193,7 +193,7 @@ test "host pattern: repeated ticks with partial progress" {
     sess.stop();
 }
 
-test "host pattern: no-progress tick (idle)" {
+test "host loop: no-progress tick (idle)" {
     const allocator = testing.allocator;
 
     var sess = try Session.init(.{
@@ -216,7 +216,7 @@ test "host pattern: no-progress tick (idle)" {
     try testing.expect(!result.hasProgress());
 }
 
-test "host pattern: lifecycle with tick sequence (start → ticks → stop)" {
+test "host loop: lifecycle with tick sequence (start → ticks → stop)" {
     const allocator = testing.allocator;
 
     var mem_t = transport_mem.MemTransport.init(allocator);
@@ -251,7 +251,7 @@ test "host pattern: lifecycle with tick sequence (start → ticks → stop)" {
     try testing.expect(sess.status == .stopped);
 }
 
-test "host pattern: partial write handling with PartialTransport" {
+test "host loop: partial write handling with PartialTransport" {
     const allocator = testing.allocator;
 
     var partial_t = PartialTransport.init(allocator, 2);
@@ -289,7 +289,7 @@ test "host pattern: partial write handling with PartialTransport" {
     sess.stop();
 }
 
-test "host pattern: multiple sequential ticks with interleaved input/output" {
+test "host loop: multiple sequential ticks with interleaved input/output" {
     const allocator = testing.allocator;
 
     var mem_t = transport_mem.MemTransport.init(allocator);
@@ -306,7 +306,7 @@ test "host pattern: multiple sequential ticks with interleaved input/output" {
 
     try sess.start();
 
-    // Simulation: host receives input and output in alternating pattern
+    // Simulation: host receives input and output in alternating rule
     var total_input: usize = 0;
     var total_output: usize = 0;
 
@@ -341,7 +341,7 @@ test "host pattern: multiple sequential ticks with interleaved input/output" {
     sess.stop();
 }
 
-test "host pattern: tick ordering invariant (feed before tick)" {
+test "host loop: tick ordering invariant (feed before tick)" {
     const allocator = testing.allocator;
 
     var sess = try Session.init(.{

@@ -8,6 +8,6 @@ Scope:
 - host-neutral session orchestration
 
 Non-goals:
-- windowing/input adapters
+- windowing/input implementations
 - renderer backend ownership
 - terminal semantic ownership
