@@ -8,8 +8,8 @@
 | `M3` Lifecycle Safety | `done` | `app_architecture/authorities/MILESTONE.md` | Startup/shutdown/restart/error boundary contracts and enforcement evidence complete. |
 | `M4` Resize and Control Flow | `done` | `app_architecture/authorities/MILESTONE.md` | Resize/control contract closure and deterministic evidence complete. |
 | `M5` Host Integration Readiness | `done` | `app_architecture/authorities/MILESTONE.md` | M5-A contract closure and M5-B session-loop contract fixtures complete. Evidence: docs/engineer/M5_B_EVIDENCE.md. |
-| `M6` Conformance Evidence | `paused` | `app_architecture/authorities/MILESTONE.md` | Paused pending M5 Host Integration Readiness closure. |
-| `M7` Performance Discipline | `paused` | `app_architecture/authorities/MILESTONE.md` | Paused pending M5 Host Integration Readiness closure. |
-| `M8` Reliability Hardening | `paused` | `app_architecture/authorities/MILESTONE.md` | Paused pending M5 Host Integration Readiness closure. |
-| `M9` Operational Surface | `paused` | `app_architecture/authorities/MILESTONE.md` | Paused pending M5 Host Integration Readiness closure. |
-| `M10` Session Runtime Quality | `paused` | `app_architecture/authorities/MILESTONE.md` | Paused pending M5 Host Integration Readiness closure. |
+| `M6` Conformance Evidence | `paused` | `app_architecture/authorities/MILESTONE.md` | M5 closed. Paused pending live-host revalidation via the shared terminal boundary. |
+| `M7` Performance Discipline | `paused` | `app_architecture/authorities/MILESTONE.md` | M5 closed. Paused pending live-host revalidation via the shared terminal boundary. |
+| `M8` Reliability Hardening | `paused` | `app_architecture/authorities/MILESTONE.md` | M5 closed. Paused pending live-host revalidation via the shared terminal boundary. |
+| `M9` Operational Surface | `paused` | `app_architecture/authorities/MILESTONE.md` | M5 closed. Paused pending live-host revalidation via the shared terminal boundary. |
+| `M10` Session Runtime Quality | `paused` | `app_architecture/authorities/MILESTONE.md` | M5 closed. Paused pending live-host revalidation via the shared terminal boundary. |
