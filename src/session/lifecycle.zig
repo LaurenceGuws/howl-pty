@@ -1,6 +1,6 @@
-//! Responsibility: implement session initialization, deinitialization, and lifecycle transitions.
-//! Ownership: init, deinit, start, stop methods and semantics.
-//! Reason: isolate resource lifecycle and state activation from other operations.
+//! Responsibility: implement session deinitialization and lifecycle transitions.
+//! Ownership: deinit, start, stop methods and semantics.
+//! Reason: isolate resource lifecycle state activation from other operations.
 
 const core = @import("core.zig");
 const Session = core.Session;
