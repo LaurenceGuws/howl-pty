@@ -4,9 +4,11 @@
 
 const std = @import("std");
 const interface = @import("interface.zig");
+/// Transport view for the in-memory transport implementations in this file.
 pub const Transport = interface.Transport;
 const ControlSignal = interface.ControlSignal;
 
+/// In-memory transport that records writes and serves reads from local buffers.
 pub const MemTransport = struct {
     allocator: std.mem.Allocator,
     started: bool,
@@ -16,6 +18,7 @@ pub const MemTransport = struct {
     last_rows: u16,
     last_signal: ?ControlSignal,
 
+    /// Creates an empty in-memory transport backed by the supplied allocator.
     pub fn init(allocator: std.mem.Allocator) MemTransport {
         return .{
             .allocator = allocator,
@@ -28,12 +31,14 @@ pub const MemTransport = struct {
         };
     }
 
+    /// Releases all buffered transport state and invalidates the instance.
     pub fn deinit(self: *MemTransport) void {
         self.rx.deinit(self.allocator);
         self.tx.deinit(self.allocator);
         self.* = undefined;
     }
 
+    /// Exposes the transport through the shared transport interface.
     pub fn transport(self: *MemTransport) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -211,12 +216,14 @@ test "control records last signal" {
     try std.testing.expectEqual(ControlSignal.interrupt, mt.last_signal.?);
 }
 
+/// In-memory transport that limits each write to a fixed byte budget.
 pub const PartialTransport = struct {
     allocator: std.mem.Allocator,
     started: bool,
     max_bytes: usize,
     tx: std.ArrayListUnmanaged(u8),
 
+    /// Creates a transport that accepts at most `max_bytes` per write call.
     pub fn init(allocator: std.mem.Allocator, max_bytes: usize) PartialTransport {
         return .{
             .allocator = allocator,
@@ -226,11 +233,13 @@ pub const PartialTransport = struct {
         };
     }
 
+    /// Releases buffered bytes and invalidates the instance.
     pub fn deinit(self: *PartialTransport) void {
         self.tx.deinit(self.allocator);
         self.* = undefined;
     }
 
+    /// Exposes the transport through the shared transport interface.
     pub fn transport(self: *PartialTransport) Transport {
         return .{ .ptr = self, .vtable = &partialVtable };
     }

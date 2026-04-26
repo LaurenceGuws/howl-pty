@@ -4,6 +4,7 @@
 
 const types = @import("../types.zig");
 
+/// Snapshot of observable session state used by conformance tests.
 pub const ConformanceCheckpoint = struct {
     status: types.SessionStatus,
     cols: u16,
@@ -12,6 +13,7 @@ pub const ConformanceCheckpoint = struct {
     last_control_signal: ?types.ControlSignal,
     pending_len: usize,
 
+    /// Copies the session state needed for boundary and conformance checks.
     pub fn capture(s: anytype) ConformanceCheckpoint {
         return .{
             .status = s.status,
@@ -23,6 +25,7 @@ pub const ConformanceCheckpoint = struct {
         };
     }
 
+    /// Verifies that two conformance checkpoints describe the same state.
     pub fn expectEqual(expected: ConformanceCheckpoint, actual: ConformanceCheckpoint) !void {
         const std = @import("std");
         try std.testing.expectEqual(expected.status, actual.status);

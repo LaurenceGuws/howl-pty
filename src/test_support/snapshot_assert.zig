@@ -2,6 +2,7 @@
 //! Ownership: snapshot assertion helper for tests.
 //! Reason: keep snapshot comparisons explicit and centralized.
 
+/// Compares the snapshot fields that define externally visible session state.
 pub fn expectSnapshotEqual(expected: anytype, actual: anytype) !void {
     const std = @import("std");
     try std.testing.expectEqual(expected.cols, actual.cols);

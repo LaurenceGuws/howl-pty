@@ -5,6 +5,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const interface = @import("interface.zig");
+/// Transport view for the Unix PTY-backed transport implementation.
 pub const Transport = interface.Transport;
 const ControlSignal = interface.ControlSignal;
 const posix = std.posix;
@@ -21,6 +22,7 @@ const c = @cImport({
     @cInclude("signal.h");
 });
 
+/// PTY transport that launches a shell or command under a child process.
 pub const UnixPtyTransport = struct {
     allocator: std.mem.Allocator,
     shell_path: [:0]u8,
@@ -31,6 +33,7 @@ pub const UnixPtyTransport = struct {
     last_cols: u16,
     last_rows: u16,
 
+    /// Duplicates the configured shell and command strings for child startup.
     pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !UnixPtyTransport {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos) return error.UnsupportedPlatform;
         const shell_z = try allocator.dupeZ(u8, shell_path);
@@ -49,6 +52,7 @@ pub const UnixPtyTransport = struct {
         };
     }
 
+    /// Stops any running child process and releases owned path storage.
     pub fn deinit(self: *UnixPtyTransport) void {
         self.stopInternal();
         self.allocator.free(self.shell_path);
@@ -56,6 +60,7 @@ pub const UnixPtyTransport = struct {
         self.* = undefined;
     }
 
+    /// Exposes the PTY transport through the shared transport interface.
     pub fn transport(self: *UnixPtyTransport) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }

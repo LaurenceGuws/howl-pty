@@ -3,18 +3,23 @@
 //! Reason: validate failure boundaries without external dependencies.
 
 const interface = @import("interface.zig");
+/// Transport view for the transport that reports failure on every operation.
 pub const Transport = interface.Transport;
 const ControlSignal = interface.ControlSignal;
 
+/// Transport implementation used to force error paths during transport tests.
 pub const FailTransport = struct {
+    /// Creates a fail-only transport instance with no internal state.
     pub fn init() FailTransport {
         return .{};
     }
 
+    /// Releases the transport instance without owning any heap resources.
     pub fn deinit(self: *FailTransport) void {
         _ = self;
     }
 
+    /// Exposes the fail-only transport through the shared transport interface.
     pub fn transport(self: *FailTransport) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }

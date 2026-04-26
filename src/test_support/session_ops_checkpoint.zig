@@ -2,6 +2,7 @@
 //! Ownership: ops checkpoint test helpers.
 //! Reason: compare operation deltas without duplicating extraction code.
 
+/// Snapshot of session operation counters for comparing test runs.
 pub const SessionOpsCheckpoint = struct {
     start_attempts: u32,
     start_successes: u32,
@@ -18,6 +19,7 @@ pub const SessionOpsCheckpoint = struct {
     resize_transport_errors: u32,
     control_calls: u32,
 
+    /// Copies the current session operation counters into a checkpoint value.
     pub fn capture(s: anytype) SessionOpsCheckpoint {
         return .{
             .start_attempts = s.ops.start_attempts,
@@ -37,6 +39,7 @@ pub const SessionOpsCheckpoint = struct {
         };
     }
 
+    /// Verifies that two checkpoints contain the same operation counts.
     pub fn expectEqual(expected: SessionOpsCheckpoint, actual: SessionOpsCheckpoint) !void {
         const std = @import("std");
         try std.testing.expectEqual(expected.start_attempts, actual.start_attempts);
