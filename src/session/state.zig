@@ -1,6 +1,6 @@
-//! Responsibility: define session internal state helpers.
-//! Ownership: session snapshot and operations counter types.
-//! Reason: centralize internal state types separate from core interface.
+//! Responsibility: define session operations counter type.
+//! Ownership: SessionOps counter structure for observability.
+//! Reason: centralize counter definitions to avoid duplication.
 
 const std = @import("std");
 

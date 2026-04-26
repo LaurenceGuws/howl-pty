@@ -7,7 +7,7 @@ const core = @import("core.zig");
 const Session = core.Session;
 const ControlSignal = core.ControlSignal;
 
-/// Resize session dimensions and recreate backing engine.
+/// Reconfigure terminal dimensions and reallocate the VT engine.
 pub fn resize(self: *Session, cols: u16, rows: u16) anyerror!void {
     if (cols == 0 or rows == 0) {
         self.ops.resize_invalid_calls += 1;
@@ -31,7 +31,7 @@ pub fn resize(self: *Session, cols: u16, rows: u16) anyerror!void {
     };
 }
 
-/// Send control signal and record last sent value.
+/// Transmit a control signal to the attached transport and record it.
 pub fn control(self: *Session, signal: ControlSignal) void {
     self.ops.control_calls += 1;
     self.last_control_signal = signal;

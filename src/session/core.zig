@@ -1,6 +1,6 @@
-//! Responsibility: implement session lifecycle, queue, resize, control, and snapshot behavior.
-//! Ownership: core runtime semantics for howl-session.
-//! Reason: centralize deterministic state transitions and boundaries.
+//! Responsibility: compose and delegate session behavior across specialized modules.
+//! Ownership: session runtime facade and method routing.
+//! Reason: maintain thin public API while organizing implementation by behavior ownership.
 
 const std = @import("std");
 const builtin = @import("builtin");

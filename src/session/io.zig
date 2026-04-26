@@ -6,7 +6,7 @@ const std = @import("std");
 const core = @import("core.zig");
 const Session = core.Session;
 
-/// Queue outbound input bytes for apply.
+/// Enqueue host input for eventual application to the engine.
 pub fn feed(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
     const projected_len = std.math.add(usize, self.pending.items.len, bytes.len) catch {
         self.ops.feed_rejected += 1;
@@ -21,7 +21,7 @@ pub fn feed(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!v
     self.ops.bytes_fed += bytes.len;
 }
 
-/// Drain queued outbound bytes.
+/// Flush enqueued host input to transport or directly to engine.
 pub fn apply(self: *Session) usize {
     self.ops.apply_calls += 1;
     const n = self.pending.items.len;
@@ -52,13 +52,13 @@ pub fn apply(self: *Session) usize {
     return drained;
 }
 
-/// Feed inbound process output bytes into VT core.
+/// Ingest process output directly into the VT terminal engine.
 pub fn feedProcessOutput(self: *Session, bytes: []const u8) anyerror!void {
     self.engine.feedSlice(bytes);
     self.engine.apply();
 }
 
-/// Clear outbound pending queue.
+/// Discard all enqueued host input without flushing.
 pub fn reset(self: *Session) void {
     self.ops.reset_calls += 1;
     self.pending.clearRetainingCapacity();

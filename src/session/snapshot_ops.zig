@@ -6,7 +6,7 @@ const core = @import("core.zig");
 const Session = core.Session;
 const SessionSnapshot = core.SessionSnapshot;
 
-/// Capture snapshot payload.
+/// Record current session state into a snapshot structure.
 pub fn snapshot(self: *const Session) SessionSnapshot {
     return .{
         .cols = self.cols,
@@ -17,7 +17,7 @@ pub fn snapshot(self: *const Session) SessionSnapshot {
     };
 }
 
-/// Restore snapshot payload fields.
+/// Restore session state from a snapshot after validation.
 pub fn restore(self: *Session, snap: SessionSnapshot) error{InvalidSnapshot}!void {
     if (snap.cols == 0 or snap.rows == 0) return error.InvalidSnapshot;
     self.cols = snap.cols;

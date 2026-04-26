@@ -1,11 +1,11 @@
-//! Responsibility: implement session lifecycle state transitions.
-//! Ownership: lifecycle semantics (deinit, start, stop).
-//! Reason: isolate initialization and lifecycle control from behavior.
+//! Responsibility: implement session initialization, deinitialization, and lifecycle transitions.
+//! Ownership: init, deinit, start, stop methods and semantics.
+//! Reason: isolate resource lifecycle and state activation from other operations.
 
 const core = @import("core.zig");
 const Session = core.Session;
 
-/// Start session lifecycle and transport if attached.
+/// Activate session lifecycle and mount transport if present.
 pub fn start(self: *Session) anyerror!void {
     self.ops.start_attempts += 1;
     if (self.status == .active) return error.AlreadyStarted;
@@ -17,7 +17,7 @@ pub fn start(self: *Session) anyerror!void {
     self.ops.start_successes += 1;
 }
 
-/// Deinitialize session-owned resources.
+/// Release all session-owned resources and invalidate.
 pub fn deinit(self: *Session) void {
     self.pending.deinit(self.allocator);
     self.engine.deinit();
