@@ -1,3 +1,7 @@
+//! Responsibility: define snapshot assertions for session test coverage.
+//! Ownership: snapshot/restore test support.
+//! Reason: keep snapshot comparison logic explicit and shared.
+
 const std = @import("std");
 const core = @import("core.zig");
 const Session = core.Session;
@@ -11,7 +15,9 @@ const ops_checkpoint = @import("../test_support/session_ops_checkpoint.zig");
 test "snapshot/restore: round-trip identity" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -37,7 +43,9 @@ test "snapshot/restore: round-trip identity" {
 test "snapshot/restore: restore replaces state after mutations" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -58,7 +66,9 @@ test "snapshot/restore: restore replaces state after mutations" {
 test "snapshot/restore: restore is idempotent" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -76,7 +86,9 @@ test "snapshot/restore: restore is idempotent" {
 test "snapshot/restore: invalid snapshot rejected with no partial mutation" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -110,7 +122,9 @@ test "snapshot/restore: active status in snapshot restores as stopped" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -131,7 +145,9 @@ test "snapshot/restore: transport attachment unchanged by restore" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -147,7 +163,9 @@ test "snapshot/restore: transport attachment unchanged by restore" {
 test "snapshot/restore: pending queue cleared on restore" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -164,7 +182,9 @@ test "snapshot/restore: pending queue cleared on restore" {
 test "snapshot/restore: ops counters unaffected by restore" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 

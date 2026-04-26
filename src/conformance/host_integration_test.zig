@@ -1,3 +1,7 @@
+//! Responsibility: validate host integration patterns against session contracts.
+//! Ownership: conformance evidence test suite.
+//! Reason: ensure loop and lifecycle behavior remain deterministic under composition.
+
 // Integration tests for host adapter pattern using session + host_loop.
 // Validates documented host pattern end-to-end: feed → apply → feedProcessOutput.
 

@@ -1,3 +1,7 @@
+//! Responsibility: provide a deterministic always-failing transport adapter.
+//! Ownership: error-path transport testing.
+//! Reason: validate failure boundaries without external dependencies.
+
 const interface = @import("interface.zig");
 pub const Transport = interface.Transport;
 const ControlSignal = interface.ControlSignal;

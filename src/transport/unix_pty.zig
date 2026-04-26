@@ -1,3 +1,7 @@
+//! Responsibility: implement POSIX PTY transport operations.
+//! Ownership: Linux/Unix process transport adapter.
+//! Reason: connect session I/O to real child-process PTY streams.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const interface = @import("interface.zig");

@@ -1,19 +1,36 @@
+//! Responsibility: publish the stable howl-session package API.
+//! Ownership: module export boundary and package-level test wiring.
+//! Reason: keep consumers decoupled from internal file topology.
+
 const std = @import("std");
 
+/// Session facade module.
 pub const session = @import("session.zig");
+/// Session runtime type.
 pub const Session = session.Session;
+/// Session configuration type.
 pub const SessionConfig = session.Config;
+/// Control signal enum.
 pub const ControlSignal = session.ControlSignal;
+/// Session lifecycle status enum.
 pub const SessionStatus = session.SessionStatus;
+/// Transport portability class enum.
 pub const TransportClass = session.TransportClass;
+/// Transport facade module.
 pub const transport = @import("transport.zig");
+/// Transport vtable wrapper.
 pub const Transport = transport.Transport;
+/// In-memory deterministic transport adapter.
 pub const MemTransport = transport.MemTransport;
+/// Always-failing transport adapter.
 pub const FailTransport = transport.FailTransport;
+/// POSIX PTY transport adapter.
 pub const UnixPtyTransport = transport.UnixPtyTransport;
+/// Host loop helper module.
 pub const host_loop = @import("ops/host_loop.zig");
+/// Host loop tick summary type.
 pub const HostLoopTick = host_loop.HostLoopTick;
-pub const host_integration_test = @import("conformance/host_integration_test.zig");
+const _host_integration_test = @import("conformance/host_integration_test.zig");
 
 test "host API: all symbols exported" {
     _ = Session;
@@ -27,7 +44,7 @@ test "host API: all symbols exported" {
     _ = UnixPtyTransport;
     _ = HostLoopTick;
     _ = host_loop.tick;
-    _ = host_integration_test;
+    _ = _host_integration_test;
 }
 
 test "host API: SessionConfig required fields present" {

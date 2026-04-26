@@ -1,3 +1,7 @@
+//! Responsibility: provide deterministic in-memory transport adapters for tests.
+//! Ownership: test-focused transport implementations.
+//! Reason: enable fast, repeatable transport behavior validation.
+
 const std = @import("std");
 const interface = @import("interface.zig");
 pub const Transport = interface.Transport;

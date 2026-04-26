@@ -1,3 +1,7 @@
+//! Responsibility: provide deterministic test-only performance sampling helpers.
+//! Ownership: performance evidence support.
+//! Reason: standardize warmup/measure loops in perf tests.
+
 const std = @import("std");
 
 pub const WARMUP_ITERS: u32 = 10;

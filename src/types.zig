@@ -1,3 +1,8 @@
+//! Responsibility: define shared session domain enums.
+//! Ownership: common types used by session and transport APIs.
+//! Reason: avoid type duplication across module boundaries.
+
+/// Session control signals propagated to transport adapters.
 pub const ControlSignal = enum {
     hangup,
     interrupt,
@@ -5,12 +10,14 @@ pub const ControlSignal = enum {
     resize_notify,
 };
 
+/// Session lifecycle status.
 pub const SessionStatus = enum {
     idle,
     active,
     stopped,
 };
 
+/// Transport portability class used for host-level planning.
 pub const TransportClass = enum {
     /// POSIX PTY transport for Linux and macOS hosts.
     /// Uses fork(), openpty(), and POSIX process control (signals, ioctl).

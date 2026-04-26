@@ -1,3 +1,7 @@
+//! Responsibility: assert equality across snapshot payload fields.
+//! Ownership: snapshot assertion helper for tests.
+//! Reason: keep snapshot comparisons explicit and centralized.
+
 pub fn expectSnapshotEqual(expected: anytype, actual: anytype) !void {
     const std = @import("std");
     try std.testing.expectEqual(expected.cols, actual.cols);

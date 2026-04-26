@@ -1,3 +1,7 @@
+//! Responsibility: define session operations checkpoint semantics for tests.
+//! Ownership: session observability helpers.
+//! Reason: keep operation-counter expectations deterministic and reusable.
+
 const std = @import("std");
 const core = @import("core.zig");
 const Session = core.Session;
@@ -11,7 +15,9 @@ test "ops: lifecycle attempt/success/failure boundaries" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -35,7 +41,9 @@ test "ops: lifecycle attempt/success/failure boundaries" {
     s2: {
         var sf = try Session.init(.{
             .allocator = std.testing.allocator,
-            .cols = 80, .rows = 24, .pending_capacity = 256,
+            .cols = 80,
+            .rows = 24,
+            .pending_capacity = 256,
             .transport = ft.transport(),
         });
         defer sf.deinit();
@@ -51,7 +59,9 @@ test "ops: lifecycle attempt/success/failure boundaries" {
 test "ops: queue feed accepted/rejected and apply drain accounting" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 10,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 10,
     });
     defer s.deinit();
 
@@ -87,7 +97,9 @@ test "ops: feed OutOfMemory does not increment feed_rejected" {
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     var s = try Session.init(.{
         .allocator = fba.allocator(),
-        .cols = 80, .rows = 24, .pending_capacity = 64,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 64,
     });
     defer s.deinit();
 
@@ -102,7 +114,9 @@ test "ops: feed OutOfMemory does not increment feed_rejected" {
 test "ops: reset_calls accounting" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -124,7 +138,9 @@ test "ops: resize/control accounting" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -140,7 +156,9 @@ test "ops: resize/control accounting" {
 
     var sf = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = ft.transport(),
     });
     defer sf.deinit();
@@ -163,7 +181,9 @@ test "ops: counters accumulate across lifecycle transitions" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -194,7 +214,9 @@ test "ops: counters accumulate across lifecycle transitions" {
 test "ops: SessionOpsCheckpoint captures all counter fields" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 

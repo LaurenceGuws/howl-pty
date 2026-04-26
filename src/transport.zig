@@ -1,13 +1,22 @@
+//! Responsibility: publish transport interface and concrete adapters.
+//! Ownership: transport facade exports.
+//! Reason: keep adapter imports stable for hosts and tests.
+
 const std = @import("std");
 const _interface = @import("transport/interface.zig");
 const _mem = @import("transport/mem.zig");
 const _fail = @import("transport/fail.zig");
 const _unix_pty = @import("transport/unix_pty.zig");
 
+/// Transport contract wrapper.
 pub const Transport = _interface.Transport;
+/// In-memory deterministic transport adapter.
 pub const MemTransport = _mem.MemTransport;
+/// Partial-write deterministic transport adapter.
 pub const PartialTransport = _mem.PartialTransport;
+/// Always-failing deterministic transport adapter.
 pub const FailTransport = _fail.FailTransport;
+/// POSIX PTY transport adapter.
 pub const UnixPtyTransport = _unix_pty.UnixPtyTransport;
 
 test "session holds transport reference" {

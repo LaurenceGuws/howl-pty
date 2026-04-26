@@ -1,3 +1,7 @@
+//! Responsibility: capture session operation counters for tests.
+//! Ownership: ops checkpoint test helpers.
+//! Reason: compare operation deltas without duplicating extraction code.
+
 pub const SessionOpsCheckpoint = struct {
     start_attempts: u32,
     start_successes: u32,

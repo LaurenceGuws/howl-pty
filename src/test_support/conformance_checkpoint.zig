@@ -1,3 +1,7 @@
+//! Responsibility: capture session conformance checkpoints for tests.
+//! Ownership: test-support checkpoint helpers.
+//! Reason: keep boundary assertions concise and reusable.
+
 const types = @import("../types.zig");
 
 pub const ConformanceCheckpoint = struct {

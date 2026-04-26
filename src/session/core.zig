@@ -1,13 +1,21 @@
+//! Responsibility: implement session lifecycle, queue, resize, control, and snapshot behavior.
+//! Ownership: core runtime semantics for howl-session.
+//! Reason: centralize deterministic state transitions and boundaries.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const types = @import("../types.zig");
 const transport_api = @import("../transport.zig");
 const vt_core = @import("vt_core");
 
+/// Session control signal enum.
 pub const ControlSignal = types.ControlSignal;
+/// Session lifecycle status enum.
 pub const SessionStatus = types.SessionStatus;
+/// Transport wrapper type.
 pub const Transport = transport_api.Transport;
 
+/// Session construction config.
 pub const Config = struct {
     allocator: std.mem.Allocator,
     cols: u16,
@@ -16,6 +24,7 @@ pub const Config = struct {
     transport: ?Transport = null,
 };
 
+/// Session snapshot payload.
 pub const SessionSnapshot = struct {
     cols: u16,
     rows: u16,
@@ -24,6 +33,7 @@ pub const SessionSnapshot = struct {
     last_control_signal: ?ControlSignal,
 };
 
+/// Session operations counters.
 pub const SessionOps = struct {
     start_attempts: u32,
     start_successes: u32,
@@ -42,6 +52,7 @@ pub const SessionOps = struct {
     control_calls: u32,
 };
 
+/// Core session runtime.
 pub const Session = struct {
     allocator: std.mem.Allocator,
     cols: u16,
@@ -55,6 +66,7 @@ pub const Session = struct {
     last_control_signal: ?ControlSignal,
     ops: SessionOps,
 
+    /// Initialize session runtime.
     pub fn init(config: Config) anyerror!Session {
         if (config.cols == 0 or config.rows == 0) return error.InvalidConfig;
         if (config.pending_capacity == 0) return error.InvalidConfig;
@@ -74,12 +86,14 @@ pub const Session = struct {
         };
     }
 
+    /// Deinitialize session-owned resources.
     pub fn deinit(self: *Session) void {
         self.pending.deinit(self.allocator);
         self.engine.deinit();
         self.* = undefined;
     }
 
+    /// Start session lifecycle and transport if attached.
     pub fn start(self: *Session) anyerror!void {
         self.ops.start_attempts += 1;
         if (self.status == .active) return error.AlreadyStarted;
@@ -91,6 +105,7 @@ pub const Session = struct {
         self.ops.start_successes += 1;
     }
 
+    /// Stop session lifecycle.
     pub fn stop(self: *Session) void {
         self.ops.stop_calls += 1;
         if (self.status == .active) {
@@ -99,6 +114,7 @@ pub const Session = struct {
         self.status = .stopped;
     }
 
+    /// Queue outbound input bytes for apply.
     pub fn feed(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
         const projected_len = std.math.add(usize, self.pending.items.len, bytes.len) catch {
             self.ops.feed_rejected += 1;
@@ -113,6 +129,7 @@ pub const Session = struct {
         self.ops.bytes_fed += bytes.len;
     }
 
+    /// Drain queued outbound bytes.
     pub fn apply(self: *Session) usize {
         self.ops.apply_calls += 1;
         const n = self.pending.items.len;
@@ -129,7 +146,7 @@ pub const Session = struct {
                 drained = written;
                 // Partial write: shift unwritten tail to front, then shrink
                 if (written < n) {
-                    std.mem.copyForwards(u8, self.pending.items[0..n-written], self.pending.items[written..n]);
+                    std.mem.copyForwards(u8, self.pending.items[0 .. n - written], self.pending.items[written..n]);
                     self.pending.shrinkRetainingCapacity(n - written);
                 } else {
                     // Full write: clear entire queue
@@ -148,51 +165,54 @@ pub const Session = struct {
         return drained;
     }
 
+    /// Feed inbound process output bytes into VT core.
     pub fn feedProcessOutput(self: *Session, bytes: []const u8) anyerror!void {
-        // Inbound: feed process output to engine (from transport, e.g., PTY stdout)
         self.engine.feedSlice(bytes);
         self.engine.apply();
     }
 
+    /// Clear outbound pending queue.
     pub fn reset(self: *Session) void {
         self.ops.reset_calls += 1;
         self.pending.clearRetainingCapacity();
     }
 
+    /// Resize session dimensions and recreate backing engine.
     pub fn resize(self: *Session, cols: u16, rows: u16) anyerror!void {
         if (cols == 0 or rows == 0) {
             self.ops.resize_invalid_calls += 1;
             return error.InvalidDimensions;
         }
 
-        // RC2: Create new engine first (transactional safety)
-        // If this fails, current engine remains valid and state unchanged
+        // Create new engine first so failure leaves existing engine untouched.
         const new_engine = try vt_core.runtime.Engine.initWithCells(self.allocator, rows, cols);
 
-        // On success: swap engines (current engine becomes unreachable, new engine active)
+        // Swap active engine only after successful allocation.
         var old_engine = self.engine;
         self.engine = new_engine;
         old_engine.deinit();
 
-        // Update session state (now that engine is safely in place)
+        // Commit dimension state after engine swap.
         self.cols = cols;
         self.rows = rows;
         self.resize_count +%= 1;
         self.ops.resize_valid_calls += 1;
 
-        // Notify transport if attached
+        // Notify attached transport after local state commit.
         if (self.transport) |t| t.resize(cols, rows) catch |err| {
             self.ops.resize_transport_errors += 1;
             return err;
         };
     }
 
+    /// Send control signal and record last sent value.
     pub fn control(self: *Session, signal: ControlSignal) void {
         self.ops.control_calls += 1;
         self.last_control_signal = signal;
         if (self.transport) |t| t.control(signal);
     }
 
+    /// Capture snapshot payload.
     pub fn snapshot(self: *const Session) SessionSnapshot {
         return .{
             .cols = self.cols,
@@ -203,6 +223,7 @@ pub const Session = struct {
         };
     }
 
+    /// Restore snapshot payload fields.
     pub fn restore(self: *Session, snap: SessionSnapshot) error{InvalidSnapshot}!void {
         if (snap.cols == 0 or snap.rows == 0) return error.InvalidSnapshot;
         self.cols = snap.cols;
@@ -527,7 +548,9 @@ test "start from active does not double-start transport" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -541,7 +564,9 @@ test "stop from active transitions to stopped and calls transport" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -556,7 +581,9 @@ test "stop from idle transitions to stopped without calling transport" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -570,7 +597,9 @@ test "stop from stopped is idempotent, transport not called again" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -586,7 +615,9 @@ test "start from stopped restarts transport" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -610,7 +641,9 @@ test "full lifecycle cycle: idle-active-stopped-active" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -631,7 +664,9 @@ test "start failure from idle leaves status idle" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -646,7 +681,9 @@ test "start failure from stopped leaves status stopped" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -662,7 +699,9 @@ test "start failure is repeatable and deterministic" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -676,7 +715,9 @@ test "resize failure retains updated dims" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -690,7 +731,9 @@ test "resize failure is repeatable and deterministic" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -705,7 +748,9 @@ test "feed/apply/reset unaffected after start failure" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -749,7 +794,9 @@ test "failed resize still increments counter and retains dims" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -787,7 +834,9 @@ test "control records last signal with transport" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -801,7 +850,9 @@ test "control with FailTransport still records signal on session" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -827,7 +878,9 @@ test "conformance FC-1: lifecycle transition checkpoint sequence" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -866,7 +919,9 @@ test "conformance FC-1: lifecycle transition checkpoint sequence" {
 test "conformance FC-2: queue capacity checkpoint sequence" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 8,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
     });
     defer s.deinit();
 
@@ -917,7 +972,9 @@ test "conformance FC-2: queue capacity checkpoint sequence" {
 test "conformance FC-3: resize and control sequencing checkpoint sequence" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
     });
     defer s.deinit();
 
@@ -958,7 +1015,9 @@ test "conformance FC-4: failure-boundary checkpoint sequence" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -995,13 +1054,17 @@ test "conformance FC-5: null vs attached transport session-state equivalence" {
 
     var s_null = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
     });
     defer s_null.deinit();
 
     var s_attached = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = mt.transport(),
     });
     defer s_attached.deinit();
@@ -1162,7 +1225,9 @@ test "reliability R-1: start/stop cycle stability" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -1188,7 +1253,9 @@ test "reliability R-2: error-path retry stability" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -1210,7 +1277,9 @@ test "reliability R-3: queue pressure at capacity" {
     const capacity: usize = 64;
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = capacity,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = capacity,
     });
     defer s.deinit();
 
@@ -1242,7 +1311,9 @@ test "reliability R-3: queue pressure at capacity" {
 test "reliability R-4: resize/control churn stability" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1273,7 +1344,9 @@ test "lifecycle error-path stability: transport failure leaves session recoverab
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -1297,7 +1370,9 @@ test "lifecycle contract guarantee: stop idempotence after transport success" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -1317,7 +1392,9 @@ test "lifecycle contract guarantee: restart from stopped transitions to active" 
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -1337,7 +1414,9 @@ test "lifecycle contract guarantee: double-start returns AlreadyStarted without 
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -1356,7 +1435,9 @@ test "lifecycle contract guarantee: resize commits dims before transport error" 
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -1374,7 +1455,9 @@ test "lifecycle contract guarantee: control always records signal before transpo
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -1384,7 +1467,9 @@ test "lifecycle contract guarantee: control always records signal before transpo
 
     var s_no_t = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s_no_t.deinit();
     s_no_t.control(.terminate);
@@ -1394,7 +1479,9 @@ test "lifecycle contract guarantee: control always records signal before transpo
 test "resize contract: valid resize increments counter and records dims" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1407,7 +1494,9 @@ test "resize contract: valid resize increments counter and records dims" {
 test "resize contract: same-dims resize still increments counter" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1421,7 +1510,9 @@ test "resize contract: same-dims resize still increments counter" {
 test "resize contract: repeated different resizes increment counter independently" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1437,7 +1528,9 @@ test "resize contract: repeated different resizes increment counter independentl
 test "resize contract: invalid zero-dim returns error without state change" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1455,7 +1548,9 @@ test "resize contract: transport failure leaves dims committed" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -1471,7 +1566,9 @@ test "control contract: signal always recorded regardless of transport" {
     defer ft.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = ft.transport(),
     });
     defer s.deinit();
@@ -1486,7 +1583,9 @@ test "control contract: signal always recorded regardless of transport" {
 test "control contract: repeated signals overwrite, no deduplication" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1500,7 +1599,9 @@ test "control contract: repeated signals overwrite, no deduplication" {
 test "control contract: control before start is safe" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1514,7 +1615,9 @@ test "control contract: control after stop is safe" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -1533,7 +1636,9 @@ test "vt_core integration: apply feeds engine when no transport" {
     // No transport: apply() should feed input directly to engine
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1549,7 +1654,9 @@ test "vt_core integration: apply feeds engine when no transport" {
 test "vt_core integration: empty apply is safe" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1563,7 +1670,9 @@ test "vt_core integration: empty apply is safe" {
 test "vt_core integration: feedProcessOutput processes engine bytes" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1579,7 +1688,9 @@ test "vt_core integration: deterministic behavior across cycles (null transport)
     // Cycle 1
     var s1 = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s1.deinit();
 
@@ -1595,7 +1706,9 @@ test "vt_core integration: deterministic behavior across cycles (null transport)
     // Create second session with same initial config
     var s2 = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s2.deinit();
 
@@ -1610,7 +1723,9 @@ test "vt_core integration: deterministic behavior across cycles (null transport)
 test "vt_core integration: resize keeps session and engine dims consistent" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1632,7 +1747,9 @@ test "vt_core integration: resize keeps session and engine dims consistent" {
 test "vt_core integration: reset clears pending but preserves engine" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1650,7 +1767,9 @@ test "vt_core integration: reset clears pending but preserves engine" {
 test "vt_core integration: apply flushes to transport or engine (null)" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1674,11 +1793,7 @@ test "unix_pty transport: session lifecycle with shell (Linux only)" {
         return;
     }
 
-    var pty = transport_api.UnixPtyTransport.init(
-        std.testing.allocator,
-        "/bin/sh",
-        null
-    ) catch {
+    var pty = transport_api.UnixPtyTransport.init(std.testing.allocator, "/bin/sh", null) catch {
         // Skip if PTY unavailable (e.g., in container without PTY support)
         return;
     };
@@ -1686,7 +1801,9 @@ test "unix_pty transport: session lifecycle with shell (Linux only)" {
 
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 4096,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 4096,
         .transport = pty.transport(),
     });
     defer s.deinit();
@@ -1713,7 +1830,9 @@ test "regression: R1 I/O direction — apply writes to transport, not engine" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -1731,7 +1850,9 @@ test "regression: R1 I/O direction — apply writes to transport, not engine" {
 test "regression: R1 I/O direction — feedProcessOutput feeds engine" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
@@ -1743,19 +1864,20 @@ test "regression: R1 I/O direction — feedProcessOutput feeds engine" {
 test "regression: R2 resize consistency — engine dims match session" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
     });
     defer s.deinit();
 
     try s.resize(120, 40);
     try std.testing.expectEqual(@as(u16, 120), s.cols);
     try std.testing.expectEqual(@as(u16, 40), s.rows);
-    
+
     const screen = s.engine.screen();
     try std.testing.expectEqual(@as(u16, 120), screen.cols);
     try std.testing.expectEqual(@as(u16, 40), screen.rows);
 }
-
 
 // ============================================================================
 // LMVP-RC1: Partial-write correctness tests
@@ -1766,7 +1888,9 @@ test "RC1: apply full write drains all pending" {
     defer mt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = mt.transport(),
     });
     defer s.deinit();
@@ -1786,7 +1910,9 @@ test "RC1: apply partial write keeps unwritten tail" {
     defer pt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = pt.transport(),
     });
     defer s.deinit();
@@ -1807,7 +1933,9 @@ test "RC1: repeated apply drains retained tail" {
     defer pt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = pt.transport(),
     });
     defer s.deinit();
@@ -1837,7 +1965,9 @@ test "RC1: zero-byte write preserves pending for retry" {
     defer pt.deinit();
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
-        .cols = 80, .rows = 24, .pending_capacity = 256,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 256,
         .transport = pt.transport(),
     });
     defer s.deinit();
