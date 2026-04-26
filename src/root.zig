@@ -56,8 +56,10 @@ test "host API: facade wiring — session symbols match sub-module origins" {
 
 const _host_integration_test = @import("conformance/host_integration_test.zig");
 const _api_contract_tests = @import("test/api_contract.zig");
+const _session_contract_tests = @import("test/session_contract.zig");
 
 test "root: import hooks" {
     _ = _host_integration_test;
     _ = _api_contract_tests;
+    _ = _session_contract_tests;
 }
