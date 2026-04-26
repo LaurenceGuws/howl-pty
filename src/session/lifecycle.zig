@@ -1,5 +1,5 @@
 //! Responsibility: implement session lifecycle state transitions.
-//! Ownership: lifecycle semantics (init, deinit, start, stop).
+//! Ownership: lifecycle semantics (deinit, start, stop).
 //! Reason: isolate initialization and lifecycle control from behavior.
 
 const core = @import("core.zig");
@@ -15,6 +15,13 @@ pub fn start(self: *Session) anyerror!void {
     };
     self.status = .active;
     self.ops.start_successes += 1;
+}
+
+/// Deinitialize session-owned resources.
+pub fn deinit(self: *Session) void {
+    self.pending.deinit(self.allocator);
+    self.engine.deinit();
+    self.* = undefined;
 }
 
 /// Stop session lifecycle.

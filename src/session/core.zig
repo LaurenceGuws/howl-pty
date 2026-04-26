@@ -77,9 +77,7 @@ pub const Session = struct {
 
     /// Deinitialize session-owned resources.
     pub fn deinit(self: *Session) void {
-        self.pending.deinit(self.allocator);
-        self.engine.deinit();
-        self.* = undefined;
+        lifecycle_impl.deinit(self);
     }
 
     /// Start session lifecycle and transport if attached.
