@@ -30,86 +30,6 @@ pub const UnixPtyTransport = transport.UnixPtyTransport;
 pub const host_loop = @import("ops/host_loop.zig");
 /// Host loop tick summary type.
 pub const HostLoopTick = host_loop.HostLoopTick;
-const _host_integration_test = @import("conformance/host_integration_test.zig");
-
-test "host API: all symbols exported" {
-    _ = Session;
-    _ = SessionConfig;
-    _ = ControlSignal;
-    _ = SessionStatus;
-    _ = TransportClass;
-    _ = Transport;
-    _ = MemTransport;
-    _ = FailTransport;
-    _ = UnixPtyTransport;
-    _ = HostLoopTick;
-    _ = host_loop.tick;
-    _ = _host_integration_test;
-}
-
-test "host API: SessionConfig required fields present" {
-    comptime {
-        std.debug.assert(@hasField(SessionConfig, "allocator"));
-        std.debug.assert(@hasField(SessionConfig, "cols"));
-        std.debug.assert(@hasField(SessionConfig, "rows"));
-        std.debug.assert(@hasField(SessionConfig, "pending_capacity"));
-        std.debug.assert(@hasField(SessionConfig, "transport"));
-    }
-}
-
-test "host API: Session required methods present" {
-    comptime {
-        _ = Session.init;
-        _ = Session.deinit;
-        _ = Session.start;
-        _ = Session.stop;
-        _ = Session.feed;
-        _ = Session.apply;
-        _ = Session.reset;
-        _ = Session.resize;
-        _ = Session.control;
-    }
-}
-
-test "host API: Session observability fields present" {
-    comptime {
-        std.debug.assert(@hasField(Session, "status"));
-        std.debug.assert(@hasField(Session, "cols"));
-        std.debug.assert(@hasField(Session, "rows"));
-        std.debug.assert(@hasField(Session, "resize_count"));
-        std.debug.assert(@hasField(Session, "last_control_signal"));
-    }
-}
-
-test "host API: ControlSignal required variants present" {
-    _ = ControlSignal.hangup;
-    _ = ControlSignal.interrupt;
-    _ = ControlSignal.terminate;
-    _ = ControlSignal.resize_notify;
-}
-
-test "host API: SessionStatus required variants present" {
-    _ = SessionStatus.idle;
-    _ = SessionStatus.active;
-    _ = SessionStatus.stopped;
-}
-
-test "host API: TransportClass required variants present" {
-    _ = TransportClass.posix_pty;
-    _ = TransportClass.container_bridge;
-    _ = TransportClass.conpty;
-}
-
-test "host API: Transport vtable methods present" {
-    comptime {
-        _ = Transport.start;
-        _ = Transport.stop;
-        _ = Transport.write;
-        _ = Transport.read;
-        _ = Transport.resize;
-        _ = Transport.control;
-    }
-}
 
 test "host API: facade wiring — transport symbols match sub-module origins" {
     const t_iface = @import("transport/interface.zig");
@@ -134,47 +54,10 @@ test "host API: facade wiring — session symbols match sub-module origins" {
     }
 }
 
-test "host API: SessionConfig transport field present with correct default" {
-    comptime {
-        std.debug.assert(@hasField(SessionConfig, "transport"));
-        const default_config: SessionConfig = .{
-            .allocator = undefined,
-            .cols = 80,
-            .rows = 24,
-            .pending_capacity = 4096,
-        };
-        std.debug.assert(default_config.transport == null);
-    }
-}
+const _host_integration_test = @import("conformance/host_integration_test.zig");
+const _api_contract_tests = @import("test/api_contract.zig");
 
-test "host API: method availability and accessibility" {
-    comptime {
-        _ = Session.init;
-        _ = Session.deinit;
-        _ = Session.start;
-        _ = Session.stop;
-        _ = Session.feed;
-        _ = Session.apply;
-        _ = Session.reset;
-        _ = Session.resize;
-        _ = Session.control;
-    }
-}
-
-test "host API: observable field types (freeze)" {
-    const t = std.debug.assert;
-    comptime {
-        var zeroed: Session = undefined;
-        zeroed.status = .idle;
-        zeroed.cols = 0;
-        zeroed.rows = 0;
-        zeroed.resize_count = 0;
-        zeroed.last_control_signal = null;
-
-        t(@TypeOf(zeroed.status) == SessionStatus);
-        t(@TypeOf(zeroed.cols) == u16);
-        t(@TypeOf(zeroed.rows) == u16);
-        t(@TypeOf(zeroed.resize_count) == u32);
-        t(@TypeOf(zeroed.last_control_signal) == ?ControlSignal);
-    }
+test "root: import hooks" {
+    _ = _host_integration_test;
+    _ = _api_contract_tests;
 }
