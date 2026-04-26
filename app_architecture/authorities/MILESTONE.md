@@ -21,4 +21,6 @@ It is intentionally non-implementation-detailed.
 
 ## Current Target
 
-Current milestone target is `M5` Host Integration Readiness planning and entry.
+Current target is live-host revalidation against the primary terminal boundary.
+The local ladder remains valid, but the next real gaps are determined by SDL and
+Android host pressure through the shared `howl-term` boundary.

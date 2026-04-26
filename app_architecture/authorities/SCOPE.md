@@ -4,19 +4,23 @@ Purpose: define what `howl-session` owns and what it does not own.
 
 ## Product Identity
 
-`howl-session` is a shared host-session runtime module used by host apps.
+`howl-session` is the shared terminal process/runtime module. It is consumed
+primarily by the primary terminal boundary (`howl-term`, currently housed in the
+`howl-term-surface` repo) and may also be consumed directly by advanced hosts or
+headless tools.
 
 ## In Scope
 
-- terminal engine lifecycle composition
-- PTY/process transport lifecycle
+- session lifecycle around one attached terminal process/runtime
+- PTY/process transport lifecycle and transport abstraction pressure
 - feed/apply/reset boundary orchestration
-- resize/control boundary flow
-- host-neutral session API for consumers
+- resize/control flow between caller, transport, and VT runtime
+- host-neutral terminal runtime API for upstream consumers
 
 ## Out of Scope
 
-- platform window/input ownership
-- renderer ownership
-- terminal semantic ownership
-- host app packaging/policy ownership
+- platform window/input/app lifecycle ownership
+- renderer ownership or render planning policy
+- terminal semantic ownership (belongs to `howl-vt-core`)
+- host packaging, multiplexing, or app policy ownership
+
