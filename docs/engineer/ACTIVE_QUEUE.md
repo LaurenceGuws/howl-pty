@@ -2,7 +2,9 @@
 
 ## Current State
 
-M5 Host Integration Readiness complete (M5-A + M5-B). Queue ready for M6 Conformance Evidence planning.
+M5 complete (M5-A + M5-B). Current gate is live-host revalidation via the shared
+terminal boundary (`howl-term`, currently `howl-term-surface`). M6+ planning does
+not start until live-host pressure identifies real conformance gaps.
 
 ## Read Before Execution
 
