@@ -2,7 +2,7 @@
 //! Ownership: common types used by session and transport APIs.
 //! Reason: avoid type duplication across module boundaries.
 
-/// Session control signals propagated to transport adapters.
+/// Session control signals propagated to transport implementations.
 pub const ControlSignal = enum {
     hangup,
     interrupt,

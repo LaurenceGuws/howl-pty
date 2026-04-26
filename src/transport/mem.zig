@@ -1,4 +1,4 @@
-//! Responsibility: provide deterministic in-memory transport adapters for tests.
+//! Responsibility: provide deterministic in-memory transport implementations for tests.
 //! Ownership: test-focused transport implementations.
 //! Reason: enable fast, repeatable transport behavior validation.
 

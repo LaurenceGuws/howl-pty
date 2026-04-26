@@ -20,11 +20,11 @@ pub const TransportClass = session.TransportClass;
 pub const transport = @import("transport.zig");
 /// Transport vtable wrapper.
 pub const Transport = transport.Transport;
-/// In-memory deterministic transport adapter.
+/// In-memory deterministic transport implementation.
 pub const MemTransport = transport.MemTransport;
-/// Always-failing transport adapter.
+/// Always-failing transport implementation.
 pub const FailTransport = transport.FailTransport;
-/// POSIX PTY transport adapter.
+/// POSIX PTY transport implementation.
 pub const UnixPtyTransport = transport.UnixPtyTransport;
 /// Host loop helper module.
 pub const host_loop = @import("ops/host_loop.zig");

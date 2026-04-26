@@ -1,5 +1,5 @@
 //! Responsibility: implement POSIX PTY transport operations.
-//! Ownership: Linux/Unix process transport adapter.
+//! Ownership: Linux/Unix process transport implementation.
 //! Reason: connect session I/O to real child-process PTY streams.
 
 const std = @import("std");

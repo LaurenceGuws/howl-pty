@@ -1,4 +1,4 @@
-//! Responsibility: provide a deterministic always-failing transport adapter.
+//! Responsibility: provide a deterministic always-failing transport implementation.
 //! Ownership: error-path transport testing.
 //! Reason: validate failure boundaries without external dependencies.
 
