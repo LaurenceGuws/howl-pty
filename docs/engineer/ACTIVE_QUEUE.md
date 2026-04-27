@@ -5,6 +5,8 @@
 M5 complete (M5-A + M5-B). Current gate is live-host revalidation via the shared
 terminal boundary (`howl-term`, currently `howl-term-surface`). M6+ planning does
 not start until live-host pressure identifies real conformance gaps.
+Transport-facing changes in this lane must preserve parity accounting across
+POSIX PTY (Linux), Android bridge pressure, and future ConPTY expectations.
 
 ## Read Before Execution
 
