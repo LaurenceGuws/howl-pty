@@ -105,7 +105,36 @@ POSIX PTY (Linux), Android bridge pressure, and future ConPTY expectations.
 - **Evidence**: docs/engineer/M5_B_EVIDENCE.md (artifact mapping, test delta, validation results)
 - **Status**: Ready for M6 Conformance Evidence phase
 
-### M5-B Known Intentional Limits
+### PAR-T1: Transport parity checkpoint
+
+Checkpoint id: PAR-T1. Date: 2026-04-27. Cross-link: `howl-android-host/docs/engineer/ACTIVE_QUEUE.md` PAR-T1 section.
+
+### POSIX PTY (Linux) — current truth
+
+`src/transport/unix_pty.zig` implements the transport contract for Linux. Session core
+(`src/session.zig`) drives the PTY through the host-neutral `Transport` interface. The
+transport boundary owns: `init`, `deinit`, `write` (inbound bytes to process), `read`
+(outbound bytes from process), `resize`, `signal`. Session core has no POSIX imports.
+
+State at PAR-T1: M5 complete, live-host revalidation is the current gate. PTY transport
+passes all 140 session tests including Unix PTY lifecycle, resize, signal, and error paths.
+
+### Android container bridge — pressure accounting
+
+No Android transport implementation exists in `howl-session`. The transport contract is
+the intended boundary. Android process integration (Alpine/container bridge) is recorded
+as `howl-android-host` pressure; it does not belong in session core. Bounded debt:
+`AH-R2` in `howl-android-host/docs/engineer/ACTIVE_QUEUE.md` tracks the Android side.
+Session core must not acquire Android-specific transport code.
+
+### ConPTY (Windows) — expectation
+
+No ConPTY implementation exists or is planned for this sprint. ConPTY is expected to
+become a future transport implementation behind the same `Transport` interface. No
+session-core changes are required until a Windows host applies pressure. Bounded debt:
+recorded here. No work items active.
+
+## M5-B Known Intentional Limits
 - No production host implementations in session repo (host repo responsibility)
 - No platform-specific code (host repos handle SDL, Android, browser bindings)
 - No optimization of loop latency or throughput (scope deferred to M7)
