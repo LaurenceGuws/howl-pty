@@ -105,7 +105,34 @@ POSIX PTY (Linux), Android bridge pressure, and future ConPTY expectations.
 - **Evidence**: docs/engineer/M5_B_EVIDENCE.md (artifact mapping, test delta, validation results)
 - **Status**: Ready for M6 Conformance Evidence phase
 
-### PAR-T1: Transport parity checkpoint
+### S2-TRANSPORT-1: Transport parity mini-checklist
+
+Ticket: S2-TRANSPORT-1. Date: 2026-04-27. Authority: DEPENDENCY_RULES.md rule 10.
+Cross-link: `howl-android-host/docs/engineer/ACTIVE_QUEUE.md` S2-TRANSPORT-1 section.
+
+Every iteration that touches session-core transport behavior, the `Transport` interface,
+or `unix_pty.zig` must complete this checklist before committing:
+
+1. **POSIX PTY impact**: Does this change affect `unix_pty.zig` behavior (init, write,
+   read, resize, signal, deinit)? If yes, add a test for the affected path. If the
+   change removes or restricts a PTY capability, document the reason explicitly.
+
+2. **Android bridge impact**: Does this change affect the `Transport` interface contract
+   (method signatures, error set, semantics)? If yes: (a) record whether the Android
+   bridge plan in AH-R2 is affected; (b) if affected, update `howl-android-host`
+   ACTIVE_QUEUE in the same iteration naming the interface delta. If no interface change,
+   state "Android bridge unaffected: interface unchanged."
+
+3. **ConPTY expectation note**: Does this change introduce any POSIX-specific assumption
+   into session core (e.g., file descriptors, signals, Unix domain sockets)? If yes,
+   record the assumption explicitly as a named ConPTY compatibility debt item. If no
+   new POSIX assumption, state "ConPTY unaffected: no new POSIX assumption."
+
+Failure to complete this checklist before committing a transport-affecting change is a
+stop condition. The checklist answers must appear in the commit message or accompanying
+queue update, not just in the PR description.
+
+## PAR-T1: Transport parity checkpoint
 
 Checkpoint id: PAR-T1. Date: 2026-04-27. Cross-link: `howl-android-host/docs/engineer/ACTIVE_QUEUE.md` PAR-T1 section.
 
