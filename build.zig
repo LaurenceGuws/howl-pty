@@ -2,7 +2,7 @@ const std = @import("std");
 
 const TransportVariant = enum {
     unix_pty,
-    container_bridge,
+    android_pty,
 };
 
 pub fn build(b: *std.Build) void {
@@ -25,8 +25,8 @@ pub fn build(b: *std.Build) void {
     mod.addImport("vt_core", vt_core_mod);
     const selected_variant: TransportVariant = if (std.mem.eql(u8, transport_variant, "unix_pty"))
         .unix_pty
-    else if (std.mem.eql(u8, transport_variant, "container_bridge"))
-        .container_bridge
+    else if (std.mem.eql(u8, transport_variant, "android_pty"))
+        .android_pty
     else
         std.debug.panic("unsupported howl-session transport variant: {s}", .{transport_variant});
     const build_options = b.addOptions();

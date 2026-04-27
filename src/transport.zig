@@ -7,7 +7,7 @@ const builtin = @import("builtin");
 const _interface = @import("transport/interface.zig");
 const _mem = @import("transport/mem.zig");
 const _fail = @import("transport/fail.zig");
-const _container = @import("transport/container_transport.zig");
+const _android_pty = @import("transport/android_pty.zig");
 const _runtime = @import("transport/runtime_variant.zig");
 
 const _unix_pty = if (builtin.os.tag == .linux or builtin.os.tag == .macos)
@@ -83,14 +83,16 @@ pub const MemTransport = _mem.MemTransport;
 pub const PartialTransport = _mem.PartialTransport;
 /// Always-failing deterministic transport implementation.
 pub const FailTransport = _fail.FailTransport;
-/// Container runtime transport implementation.
-pub const ContainerTransport = _container.ContainerTransport;
+/// Android PTY transport implementation.
+pub const AndroidPtyTransport = _android_pty.AndroidPtyTransport;
 /// POSIX PTY transport implementation.
 pub const UnixPtyTransport = _unix_pty.UnixPtyTransport;
 /// Runtime transport selected by compile-time session lane.
 pub const RuntimeTransport = _runtime.RuntimeTransport;
 /// Runtime transport class selected by compile-time session lane.
 pub const runtime_transport_class = _runtime.runtime_transport_class;
+/// Runtime transport constructor selected by compile-time session lane.
+pub const initRuntimeTransport = _runtime.initRuntimeTransport;
 
 test "session holds transport reference" {
     const session_api = @import("session.zig");

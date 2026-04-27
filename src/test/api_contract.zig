@@ -14,10 +14,11 @@ test "host API: all symbols exported" {
     _ = root.Transport;
     _ = root.MemTransport;
     _ = root.FailTransport;
-    _ = root.ContainerTransport;
+    _ = root.AndroidPtyTransport;
     _ = root.UnixPtyTransport;
     _ = root.RuntimeTransport;
     _ = root.runtime_transport_class;
+    _ = root.initRuntimeTransport;
     _ = root.HostLoopTick;
     _ = root.host_loop.tick;
 }
@@ -71,13 +72,13 @@ test "host API: SessionStatus required variants present" {
 
 test "host API: TransportClass required variants present" {
     _ = root.TransportClass.posix_pty;
-    _ = root.TransportClass.container_bridge;
+    _ = root.TransportClass.android_pty;
     _ = root.TransportClass.conpty;
 }
 
 test "host API: runtime transport class must be a declared variant" {
     switch (root.runtime_transport_class) {
-        .posix_pty, .container_bridge => {},
+        .posix_pty, .android_pty => {},
         .conpty => unreachable,
     }
 }

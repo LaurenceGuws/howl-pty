@@ -22,9 +22,9 @@ pub const TransportClass = enum {
     /// POSIX PTY transport for Linux and macOS hosts.
     /// Uses fork(), openpty(), and POSIX process control (signals, ioctl).
     posix_pty,
-    /// Container bridge transport for Android, iOS, and platform-managed containers.
-    /// Routes I/O through platform container/process bridge services.
-    container_bridge,
+    /// Android PTY transport for Android hosts.
+    /// Routes I/O through Android shell PTY runtime.
+    android_pty,
     /// ConPTY transport for Windows hosts (future).
     /// Uses Windows ConPTY API and Windows process management.
     conpty,

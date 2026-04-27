@@ -24,14 +24,16 @@ pub const Transport = transport.Transport;
 pub const MemTransport = transport.MemTransport;
 /// Always-failing transport implementation.
 pub const FailTransport = transport.FailTransport;
-/// Container runtime transport implementation.
-pub const ContainerTransport = transport.ContainerTransport;
+/// Android PTY transport implementation.
+pub const AndroidPtyTransport = transport.AndroidPtyTransport;
 /// POSIX PTY transport implementation.
 pub const UnixPtyTransport = transport.UnixPtyTransport;
 /// Runtime transport selected by compile-time lane configuration.
 pub const RuntimeTransport = transport.RuntimeTransport;
 /// Runtime transport class selected by compile-time lane configuration.
 pub const runtime_transport_class = transport.runtime_transport_class;
+/// Runtime transport constructor selected by compile-time lane configuration.
+pub const initRuntimeTransport = transport.initRuntimeTransport;
 /// Host loop helper module.
 pub const host_loop = @import("ops/host_loop.zig");
 /// Host loop tick summary type.
@@ -41,13 +43,13 @@ test "host API: facade wiring — transport symbols match sub-module origins" {
     const t_iface = @import("transport/interface.zig");
     const t_mem = @import("transport/mem.zig");
     const t_fail = @import("transport/fail.zig");
-    const t_container = @import("transport/container_transport.zig");
+    const t_android_pty = @import("transport/android_pty.zig");
     const t_pty = @import("transport/unix_pty.zig");
     comptime {
         std.debug.assert(Transport == t_iface.Transport);
         std.debug.assert(MemTransport == t_mem.MemTransport);
         std.debug.assert(FailTransport == t_fail.FailTransport);
-        std.debug.assert(ContainerTransport == t_container.ContainerTransport);
+        std.debug.assert(AndroidPtyTransport == t_android_pty.AndroidPtyTransport);
         std.debug.assert(UnixPtyTransport == t_pty.UnixPtyTransport);
     }
 }
