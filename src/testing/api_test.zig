@@ -13,9 +13,7 @@ test "api exports compile" {
     _ = root.AndroidPtyTransport;
     _ = root.UnixPtyTransport;
     _ = root.transport_class;
-    _ = root.initTransport;
-    _ = root.HostLoopTick;
-}
+    _ = root.initTransport;}
 
 test "session method surface" {
     comptime {

@@ -21,8 +21,6 @@ pub const LaneTransport = transport.LaneTransport;
 pub const transport_class = transport.transport_class;
 pub const initTransport = transport.initTransport;
 
-pub const host_loop = @import("host_loop.zig");
-pub const HostLoopTick = host_loop.HostLoopTick;
 
 test "facade wiring" {
     const s = @import("session.zig");
@@ -37,11 +35,8 @@ test "facade wiring" {
 }
 
 const _api_tests = @import("testing/api_test.zig");
-const _host_tests = @import("testing/host_integration_test.zig");
 const _session_tests = @import("testing/session_test.zig");
 
 test "root imports" {
-    _ = _api_tests;
-    _ = _host_tests;
-    _ = _session_tests;
+    _ = _api_tests;    _ = _session_tests;
 }
