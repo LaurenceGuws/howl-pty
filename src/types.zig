@@ -17,7 +17,7 @@ pub const SessionStatus = enum {
     stopped,
 };
 
-/// Transport portability class used for host-level planning.
+/// Transport portability class used for host-level selection.
 pub const TransportClass = enum {
     /// POSIX PTY transport for Linux and macOS hosts.
     /// Uses fork(), openpty(), and POSIX process control (signals, ioctl).
