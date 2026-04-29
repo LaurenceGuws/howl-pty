@@ -6,7 +6,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 const types = @import("types.zig");
-const vt_core = @import("vt_core");
 const posix = std.posix;
 
 const c = @cImport({
@@ -21,8 +20,6 @@ const c = @cImport({
     @cInclude("signal.h");
 });
 
-pub const ControlSignal = vt_core.ControlSignal;
-
 pub const Transport = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
@@ -33,7 +30,7 @@ pub const Transport = struct {
         write: *const fn (ptr: *anyopaque, bytes: []const u8) anyerror!usize,
         read: *const fn (ptr: *anyopaque, buf: []u8) anyerror!usize,
         resize: *const fn (ptr: *anyopaque, cols: u16, rows: u16) anyerror!void,
-        control: *const fn (ptr: *anyopaque, signal: ControlSignal) void,
+        control: *const fn (ptr: *anyopaque, signal: u8) void,
     };
 
     pub fn start(self: Transport) anyerror!void {
@@ -51,7 +48,7 @@ pub const Transport = struct {
     pub fn resize(self: Transport, cols: u16, rows: u16) anyerror!void {
         return self.vtable.resize(self.ptr, cols, rows);
     }
-    pub fn control(self: Transport, signal: ControlSignal) void {
+    pub fn control(self: Transport, signal: u8) void {
         self.vtable.control(self.ptr, signal);
     }
 };
@@ -63,7 +60,7 @@ pub const MemTransport = struct {
     tx: std.ArrayListUnmanaged(u8),
     last_cols: u16,
     last_rows: u16,
-    last_signal: ?ControlSignal,
+    last_signal: ?u8,
 
     pub fn init(allocator: std.mem.Allocator) MemTransport {
         return .{ .allocator = allocator, .started = false, .rx = .empty, .tx = .empty, .last_cols = 0, .last_rows = 0, .last_signal = null };
@@ -113,7 +110,7 @@ pub const MemTransport = struct {
         self.last_cols = cols;
         self.last_rows = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlImpl(ptr: *anyopaque, signal: u8) void {
         const self: *MemTransport = @ptrCast(@alignCast(ptr));
         self.last_signal = signal;
     }
@@ -166,7 +163,7 @@ pub const PartialTransport = struct {
         _ = cols;
         _ = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlImpl(ptr: *anyopaque, signal: u8) void {
         _ = ptr;
         _ = signal;
     }
@@ -207,7 +204,7 @@ pub const FailTransport = struct {
         _ = rows;
         return error.TransportFailed;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlImpl(ptr: *anyopaque, signal: u8) void {
         _ = ptr;
         _ = signal;
     }
@@ -314,15 +311,10 @@ pub const UnixPtyTransport = struct {
         self.last_cols = cols;
         self.last_rows = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlImpl(ptr: *anyopaque, signal: u8) void {
         const self: *UnixPtyTransport = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
-        if (self.child_pid) |pid| switch (signal) {
-            .hangup => sendSignal(pid, @intCast(posix.SIG.HUP)),
-            .interrupt => sendSignal(pid, @intCast(posix.SIG.INT)),
-            .terminate => sendSignal(pid, @intCast(posix.SIG.TERM)),
-            .resize_notify => sendSignal(pid, @intCast(posix.SIG.WINCH)),
-        };
+        if (self.child_pid) |pid| sendSignal(pid, signal);
     }
 };
 
@@ -427,15 +419,10 @@ pub const AndroidPtyTransport = struct {
         self.last_cols = cols;
         self.last_rows = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlImpl(ptr: *anyopaque, signal: u8) void {
         const self: *AndroidPtyTransport = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
-        if (self.child_pid) |pid| switch (signal) {
-            .hangup => sendSignal(pid, @intCast(posix.SIG.HUP)),
-            .interrupt => sendSignal(pid, @intCast(posix.SIG.INT)),
-            .terminate => sendSignal(pid, @intCast(posix.SIG.TERM)),
-            .resize_notify => sendSignal(pid, @intCast(posix.SIG.WINCH)),
-        };
+        if (self.child_pid) |pid| sendSignal(pid, signal);
     }
 };
 

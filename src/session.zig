@@ -1,13 +1,11 @@
-//! Responsibility: provide the full session and stable aliases.
-//! Ownership: session lifecycle, I/O, resize/control, and snapshot behavior.
-//! Reason: keep session imports stable in one file.
+//! Responsibility: session queue/lifecycle boundary.
+//! Ownership: pending input queue, transport lifecycle, resize tracking.
+//! Reason: keep session focused on I/O orchestration only.
 
 const std = @import("std");
 const types = @import("types.zig");
 const transport_api = @import("transport.zig");
-const vt_core = @import("vt_core");
 
-pub const ControlSignal = vt_core.ControlSignal;
 pub const SessionStatus = types.SessionStatus;
 pub const TransportClass = types.TransportClass;
 pub const Transport = transport_api.Transport;
@@ -25,7 +23,6 @@ pub const SessionSnapshot = struct {
     rows: u16,
     status: SessionStatus,
     resize_count: u32,
-    last_control_signal: ?ControlSignal,
 };
 
 pub const SessionOps = struct {
@@ -43,7 +40,6 @@ pub const SessionOps = struct {
     resize_valid_calls: u32,
     resize_invalid_calls: u32,
     resize_transport_errors: u32,
-    control_calls: u32,
 };
 
 pub const Session = struct {
@@ -55,10 +51,9 @@ pub const Session = struct {
     pending_capacity: usize,
     transport: ?Transport,
     resize_count: u32,
-    last_control_signal: ?ControlSignal,
     ops: SessionOps,
 
-    pub fn init(config: Config) anyerror!Session {
+    pub fn init(config: Config) !Session {
         if (config.cols == 0 or config.rows == 0) return error.InvalidConfig;
         if (config.pending_capacity == 0) return error.InvalidConfig;
         return .{
@@ -70,7 +65,6 @@ pub const Session = struct {
             .pending_capacity = config.pending_capacity,
             .transport = config.transport,
             .resize_count = 0,
-            .last_control_signal = null,
             .ops = std.mem.zeroes(SessionOps),
         };
     }
@@ -80,7 +74,7 @@ pub const Session = struct {
         self.* = undefined;
     }
 
-    pub fn start(self: *Session) anyerror!void {
+    pub fn start(self: *Session) !void {
         self.ops.start_attempts += 1;
         if (self.status == .active) return error.AlreadyStarted;
         if (self.transport) |t| t.start() catch |err| {
@@ -146,7 +140,7 @@ pub const Session = struct {
         self.pending.clearRetainingCapacity();
     }
 
-    pub fn resize(self: *Session, cols: u16, rows: u16) anyerror!void {
+    pub fn resize(self: *Session, cols: u16, rows: u16) !void {
         if (cols == 0 or rows == 0) {
             self.ops.resize_invalid_calls += 1;
             return error.InvalidDimensions;
@@ -163,19 +157,12 @@ pub const Session = struct {
         };
     }
 
-    pub fn control(self: *Session, signal: ControlSignal) void {
-        self.ops.control_calls += 1;
-        self.last_control_signal = signal;
-        if (self.transport) |t| t.control(signal);
-    }
-
     pub fn snapshot(self: *const Session) SessionSnapshot {
         return .{
             .cols = self.cols,
             .rows = self.rows,
             .status = self.status,
             .resize_count = self.resize_count,
-            .last_control_signal = self.last_control_signal,
         };
     }
 
@@ -185,7 +172,6 @@ pub const Session = struct {
         self.rows = snap.rows;
         self.status = if (snap.status == .active) .stopped else snap.status;
         self.resize_count = snap.resize_count;
-        self.last_control_signal = snap.last_control_signal;
         self.pending.clearRetainingCapacity();
     }
 };

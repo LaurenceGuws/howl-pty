@@ -15,7 +15,7 @@ const Session = session.Session;
 pub const HostLoopTick = struct {
     /// Bytes drained from pending queue in outbound phase.
     outbound_drained: usize,
-    /// Bytes fed to vt_core in inbound phase.
+    /// Bytes fed to session-boundary in inbound phase.
     inbound_fed: usize,
     /// True if outbound made progress (drained > 0).
     has_outbound: bool,
@@ -86,7 +86,7 @@ test "host_loop: outbound only (pending queue drained)" {
     try testing.expect(result.hasProgress());
 }
 
-test "host_loop: inbound only (vt_core fed)" {
+test "host_loop: inbound only (session-boundary fed)" {
     const allocator = testing.allocator;
 
     var session_handle = try Session_.init(.{

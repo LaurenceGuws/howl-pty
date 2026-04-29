@@ -3,11 +3,7 @@
     .version = "0.0.0",
     .fingerprint = 0xf94bb9f62e656918, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
-    .dependencies = .{
-        .vt_core = .{
-            .path = "../howl-vt-core",
-        },
-    },
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",
