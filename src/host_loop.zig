@@ -3,7 +3,7 @@
 //! Reason: make outbound/inbound loop sequencing explicit and reusable.
 
 // Host loop envelope for session I/O coordination.
-// Encodes the ordering api: outbound apply, then inbound feedProcessOutput.
+// Encodes the ordering api: outbound apply with inbound byte accounting.
 
 const std = @import("std");
 const session = @import("session.zig");
@@ -31,22 +31,18 @@ pub const HostLoopTick = struct {
 /// Execute one host loop tick: outbound + inbound I/O phases.
 ///
 /// Precondition: All input bytes must be queued via session.feed() before calling tick().
-/// Postcondition: Transport input bytes have been passed to session.feedProcessOutput().
+/// Postcondition: Transport input byte count is reported for host-side processing.
 ///
 /// Phase 1 (Outbound): Attempts to drain pending input queue to transport.
-/// Phase 2 (Inbound): Feeds transport output bytes to the terminal vt_core.
+/// Phase 2 (Inbound): Reports transport output byte count for host-side handling.
 ///
-/// Returns a summary of progress in each phase. Errors propagate from inbound feed.
+/// Returns a summary of progress in each phase.
 pub fn tick(sess: *Session, transport_input: []const u8) anyerror!HostLoopTick {
     // Phase 1: Outbound - flush pending input to transport
     const outbound_drained = sess.apply();
 
-    // Phase 2: Inbound - feed transport output to vt_core
-    var inbound_fed: usize = 0;
-    if (transport_input.len > 0) {
-        try sess.feedProcessOutput(transport_input);
-        inbound_fed = transport_input.len;
-    }
+    // Phase 2: Inbound - host-owned vt path is outside session.
+    const inbound_fed: usize = transport_input.len;
 
     return .{
         .outbound_drained = outbound_drained,

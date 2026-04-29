@@ -54,7 +54,6 @@ pub const Session = struct {
     pending: std.ArrayListUnmanaged(u8),
     pending_capacity: usize,
     transport: ?Transport,
-    vt: vt_core.VtCore,
     resize_count: u32,
     last_control_signal: ?ControlSignal,
     ops: SessionOps,
@@ -62,7 +61,6 @@ pub const Session = struct {
     pub fn init(config: Config) anyerror!Session {
         if (config.cols == 0 or config.rows == 0) return error.InvalidConfig;
         if (config.pending_capacity == 0) return error.InvalidConfig;
-        const vt = try vt_core.VtCore.initWithCells(config.allocator, config.rows, config.cols);
         return .{
             .allocator = config.allocator,
             .cols = config.cols,
@@ -71,7 +69,6 @@ pub const Session = struct {
             .pending = .empty,
             .pending_capacity = config.pending_capacity,
             .transport = config.transport,
-            .vt = vt,
             .resize_count = 0,
             .last_control_signal = null,
             .ops = std.mem.zeroes(SessionOps),
@@ -80,7 +77,6 @@ pub const Session = struct {
 
     pub fn deinit(self: *Session) void {
         self.pending.deinit(self.allocator);
-        self.vt.deinit();
         self.* = undefined;
     }
 
@@ -136,8 +132,6 @@ pub const Session = struct {
                     self.pending.clearRetainingCapacity();
                 }
             } else {
-                self.vt.feedSlice(self.pending.items);
-                self.vt.apply();
                 drained = n;
                 self.pending.clearRetainingCapacity();
             }
@@ -145,11 +139,6 @@ pub const Session = struct {
 
         self.ops.bytes_applied += drained;
         return drained;
-    }
-
-    pub fn feedProcessOutput(self: *Session, bytes: []const u8) anyerror!void {
-        self.vt.feedSlice(bytes);
-        self.vt.apply();
     }
 
     pub fn reset(self: *Session) void {
@@ -162,12 +151,6 @@ pub const Session = struct {
             self.ops.resize_invalid_calls += 1;
             return error.InvalidDimensions;
         }
-
-        const new_vt = try vt_core.VtCore.initWithCells(self.allocator, rows, cols);
-
-        var old_vt = self.vt;
-        self.vt = new_vt;
-        old_vt.deinit();
 
         self.cols = cols;
         self.rows = rows;

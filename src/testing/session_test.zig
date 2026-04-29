@@ -1405,10 +1405,9 @@ test "control api: control after stop is safe" {
     try std.testing.expectEqual(SessionStatus.stopped, s.status);
 }
 
-// VT Core Integration Tests
+// Session boundary tests
 
-test "vt_core integration: apply feeds vt_core when no transport" {
-    // No transport: apply() should feed input directly to vt_core
+test "session boundary: apply drains queue in null-transport mode" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1418,15 +1417,11 @@ test "vt_core integration: apply feeds vt_core when no transport" {
     defer s.deinit();
 
     try s.feed("hello");
-    const n = s.apply();
-    try std.testing.expectEqual(@as(usize, 5), n);
-
-    // VtCore should have processed the text (null-transport mode)
-    const screen = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+    try std.testing.expectEqual(@as(usize, 5), s.apply());
+    try std.testing.expectEqual(@as(usize, 0), s.apply());
 }
 
-test "vt_core integration: empty apply is safe" {
+test "session boundary: resize updates only session dimensions" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1435,131 +1430,9 @@ test "vt_core integration: empty apply is safe" {
     });
     defer s.deinit();
 
-    const n = s.apply();
-    try std.testing.expectEqual(@as(usize, 0), n);
-
-    const screen = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen.cols);
-}
-
-test "vt_core integration: feedProcessOutput processes vt_core bytes" {
-    var s = try Session.init(.{
-        .allocator = std.testing.allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 256,
-    });
-    defer s.deinit();
-
-    // Process output (from PTY) goes through feedProcessOutput
-    try s.feedProcessOutput("output");
-
-    // VtCore should have processed the output
-    const screen = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen.cols);
-}
-
-test "vt_core integration: deterministic behavior across cycles (null transport)" {
-    // Cycle 1
-    var s1 = try Session.init(.{
-        .allocator = std.testing.allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 256,
-    });
-    defer s1.deinit();
-
-    try s1.feed("ABC");
-    _ = s1.apply();
-    const seq1_after_abc = s1.vt.queuedEventCount();
-
-    // Cycle 2 (same session)
-    try s1.feed("DEF");
-    _ = s1.apply();
-    _ = s1.vt.queuedEventCount();
-
-    // Create second session with same initial config
-    var s2 = try Session.init(.{
-        .allocator = std.testing.allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 256,
-    });
-    defer s2.deinit();
-
-    try s2.feed("ABC");
-    _ = s2.apply();
-    const seq2_after_abc = s2.vt.queuedEventCount();
-
-    // After same feed/apply in both sessions (null transport), behavior should match
-    try std.testing.expectEqual(seq1_after_abc, seq2_after_abc);
-}
-
-test "vt_core integration: resize keeps session and vt_core dims consistent" {
-    var s = try Session.init(.{
-        .allocator = std.testing.allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 256,
-    });
-    defer s.deinit();
-
-    const screen_before = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen_before.cols);
-    try std.testing.expectEqual(@as(u16, 24), screen_before.rows);
-
-    // Resize session dimensions
     try s.resize(132, 50);
     try std.testing.expectEqual(@as(u16, 132), s.cols);
     try std.testing.expectEqual(@as(u16, 50), s.rows);
-
-    // VtCore dimensions now match session (vt_core was recreated with new dims)
-    const screen_after = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 132), screen_after.cols);
-    try std.testing.expectEqual(@as(u16, 50), screen_after.rows);
-}
-
-test "vt_core integration: reset clears pending but preserves vt_core" {
-    var s = try Session.init(.{
-        .allocator = std.testing.allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 256,
-    });
-    defer s.deinit();
-
-    try s.feed("hello");
-    s.reset();
-
-    // Pending should be cleared
-    try std.testing.expectEqual(@as(usize, 0), s.apply());
-
-    // VtCore should still be functional
-    const screen = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen.cols);
-}
-
-test "vt_core integration: apply flushes to transport or vt_core (null)" {
-    var s = try Session.init(.{
-        .allocator = std.testing.allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 256,
-    });
-    defer s.deinit();
-
-    try s.feed("A");
-    try std.testing.expectEqual(@as(usize, 1), s.apply());
-
-    try s.feed("B");
-    try std.testing.expectEqual(@as(usize, 1), s.apply());
-
-    try s.feed("CD");
-    try std.testing.expectEqual(@as(usize, 2), s.apply());
-
-    // In null-transport mode, pending is fed to vt_core; no transport writes
-    const screen = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
 // Platform-specific smoke test
@@ -1622,7 +1495,7 @@ test "regression: R1 I/O direction — apply writes to transport, not vt_core" {
     try std.testing.expectEqual(@as(usize, 5), mt.tx.items.len);
 }
 
-test "regression: R1 I/O direction — feedProcessOutput feeds vt_core" {
+test "regression: R1 I/O direction — null transport apply drains queue" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1631,12 +1504,11 @@ test "regression: R1 I/O direction — feedProcessOutput feeds vt_core" {
     });
     defer s.deinit();
 
-    try s.feedProcessOutput("output");
-    const screen = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 80), screen.cols);
+    try s.feed("output");
+    try std.testing.expectEqual(@as(usize, 6), s.apply());
 }
 
-test "regression: R2 resize consistency — vt_core dims match session" {
+test "regression: R2 resize consistency — session dims update deterministically" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1649,9 +1521,8 @@ test "regression: R2 resize consistency — vt_core dims match session" {
     try std.testing.expectEqual(@as(u16, 120), s.cols);
     try std.testing.expectEqual(@as(u16, 40), s.rows);
 
-    const screen = s.vt.screen();
-    try std.testing.expectEqual(@as(u16, 120), screen.cols);
-    try std.testing.expectEqual(@as(u16, 40), screen.rows);
+    try std.testing.expectEqual(@as(u16, 120), s.cols);
+    try std.testing.expectEqual(@as(u16, 40), s.rows);
 }
 
 // ============================================================================
