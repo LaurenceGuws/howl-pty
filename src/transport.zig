@@ -5,7 +5,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
-const types = @import("types.zig");
 const posix = std.posix;
 
 const c = @cImport({
@@ -52,8 +51,20 @@ pub const Transport = struct {
         self.vtable.control(self.ptr, signal);
     }
 };
+///  portability class used for host-level selection.
+pub const Class = enum {
+    /// POSIX PTY transport for Linux and macOS hosts.
+    /// Uses fork(), openpty(), and POSIX process control (signals, ioctl).
+    posix_pty,
+    /// Android PTY transport for Android hosts.
+    /// Routes I/O through Android shell PTY
+    android_pty,
+    /// ConPTY transport for Windows hosts (future).
+    /// Uses Windows ConPTY API and Windows process management.
+    conpty,
+};
 
-pub const MemTransport = struct {
+pub const Mem = struct {
     allocator: std.mem.Allocator,
     started: bool,
     rx: std.ArrayListUnmanaged(u8),
@@ -62,39 +73,39 @@ pub const MemTransport = struct {
     last_rows: u16,
     last_signal: ?u8,
 
-    pub fn init(allocator: std.mem.Allocator) MemTransport {
+    pub fn init(allocator: std.mem.Allocator) Mem {
         return .{ .allocator = allocator, .started = false, .rx = .empty, .tx = .empty, .last_cols = 0, .last_rows = 0, .last_signal = null };
     }
 
-    pub fn deinit(self: *MemTransport) void {
+    pub fn deinit(self: *Mem) void {
         self.rx.deinit(self.allocator);
         self.tx.deinit(self.allocator);
         self.* = undefined;
     }
 
-    pub fn transport(self: *MemTransport) Transport {
+    pub fn transport(self: *Mem) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
     const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
 
     fn startImpl(ptr: *anyopaque) anyerror!void {
-        const self: *MemTransport = @ptrCast(@alignCast(ptr));
+        const self: *Mem = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
         self.started = true;
     }
     fn stopImpl(ptr: *anyopaque) void {
-        const self: *MemTransport = @ptrCast(@alignCast(ptr));
+        const self: *Mem = @ptrCast(@alignCast(ptr));
         self.started = false;
     }
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
-        const self: *MemTransport = @ptrCast(@alignCast(ptr));
+        const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         try self.tx.appendSlice(self.allocator, bytes);
         return bytes.len;
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
-        const self: *MemTransport = @ptrCast(@alignCast(ptr));
+        const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         const n = @min(buf.len, self.rx.items.len);
         if (n == 0) return 0;
@@ -105,49 +116,49 @@ pub const MemTransport = struct {
         return n;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
-        const self: *MemTransport = @ptrCast(@alignCast(ptr));
+        const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         self.last_cols = cols;
         self.last_rows = rows;
     }
     fn controlImpl(ptr: *anyopaque, signal: u8) void {
-        const self: *MemTransport = @ptrCast(@alignCast(ptr));
+        const self: *Mem = @ptrCast(@alignCast(ptr));
         self.last_signal = signal;
     }
 };
 
-pub const PartialTransport = struct {
+pub const Partial = struct {
     allocator: std.mem.Allocator,
     started: bool,
     max_bytes: usize,
     tx: std.ArrayListUnmanaged(u8),
 
-    pub fn init(allocator: std.mem.Allocator, max_bytes: usize) PartialTransport {
+    pub fn init(allocator: std.mem.Allocator, max_bytes: usize) Partial {
         return .{ .allocator = allocator, .started = false, .max_bytes = max_bytes, .tx = .empty };
     }
 
-    pub fn deinit(self: *PartialTransport) void {
+    pub fn deinit(self: *Partial) void {
         self.tx.deinit(self.allocator);
         self.* = undefined;
     }
 
-    pub fn transport(self: *PartialTransport) Transport {
+    pub fn transport(self: *Partial) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
     const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
 
     fn startImpl(ptr: *anyopaque) anyerror!void {
-        const self: *PartialTransport = @ptrCast(@alignCast(ptr));
+        const self: *Partial = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
         self.started = true;
     }
     fn stopImpl(ptr: *anyopaque) void {
-        const self: *PartialTransport = @ptrCast(@alignCast(ptr));
+        const self: *Partial = @ptrCast(@alignCast(ptr));
         self.started = false;
     }
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
-        const self: *PartialTransport = @ptrCast(@alignCast(ptr));
+        const self: *Partial = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         const n = @min(bytes.len, self.max_bytes);
         try self.tx.appendSlice(self.allocator, bytes[0..n]);
@@ -169,21 +180,21 @@ pub const PartialTransport = struct {
     }
 };
 
-pub const FailTransport = struct {
-    pub fn init() FailTransport {
+pub const Fail = struct {
+    pub fn init() Fail {
         return .{};
     }
-    pub fn deinit(self: *FailTransport) void {
+    pub fn deinit(self: *Fail) void {
         _ = self;
     }
-    pub fn transport(self: *FailTransport) Transport {
+    pub fn transport(self: *Fail) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
     const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         _ = ptr;
-        return error.TransportFailed;
+        return error.Failed;
     }
     fn stopImpl(ptr: *anyopaque) void {
         _ = ptr;
@@ -191,18 +202,18 @@ pub const FailTransport = struct {
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         _ = ptr;
         _ = bytes;
-        return error.TransportFailed;
+        return error.Failed;
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
         _ = ptr;
         _ = buf;
-        return error.TransportFailed;
+        return error.Failed;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         _ = ptr;
         _ = cols;
         _ = rows;
-        return error.TransportFailed;
+        return error.Failed;
     }
     fn controlImpl(ptr: *anyopaque, signal: u8) void {
         _ = ptr;
@@ -210,7 +221,7 @@ pub const FailTransport = struct {
     }
 };
 
-pub const UnixPtyTransport = struct {
+pub const UnixPty = struct {
     allocator: std.mem.Allocator,
     shell_path: [:0]u8,
     command: ?[:0]u8,
@@ -220,7 +231,7 @@ pub const UnixPtyTransport = struct {
     last_cols: u16,
     last_rows: u16,
 
-    pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !UnixPtyTransport {
+    pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !UnixPty {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos) return error.UnsupportedPlatform;
         const shell_z = try allocator.dupeZ(u8, shell_path);
         errdefer allocator.free(shell_z);
@@ -229,18 +240,18 @@ pub const UnixPtyTransport = struct {
         return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
-    pub fn deinit(self: *UnixPtyTransport) void {
+    pub fn deinit(self: *UnixPty) void {
         self.stopInternal();
         self.allocator.free(self.shell_path);
         if (self.command) |cmd| self.allocator.free(cmd);
         self.* = undefined;
     }
 
-    pub fn transport(self: *UnixPtyTransport) Transport {
+    pub fn transport(self: *UnixPty) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    fn startInternal(self: *UnixPtyTransport) anyerror!void {
+    fn startInternal(self: *UnixPty) anyerror!void {
         if (self.started) return error.AlreadyStarted;
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
@@ -262,7 +273,7 @@ pub const UnixPtyTransport = struct {
         self.started = true;
     }
 
-    fn stopInternal(self: *UnixPtyTransport) void {
+    fn stopInternal(self: *UnixPty) void {
         if (!self.started) return;
         if (self.child_pid) |pid| {
             sendSignal(pid, @intCast(posix.SIG.TERM));
@@ -276,15 +287,15 @@ pub const UnixPtyTransport = struct {
 
     const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
-        const self: *UnixPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
     }
     fn stopImpl(ptr: *anyopaque) void {
-        const self: *UnixPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.stopInternal();
     }
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
-        const self: *UnixPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (bytes.len == 0) return 0;
         const n = posix.write(self.master_fd.?, bytes) catch |err| switch (err) {
@@ -294,7 +305,7 @@ pub const UnixPtyTransport = struct {
         return n;
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
-        const self: *UnixPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (buf.len == 0) return 0;
         const n = posix.read(self.master_fd.?, buf) catch |err| switch (err) {
@@ -304,7 +315,7 @@ pub const UnixPtyTransport = struct {
         return n;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
-        const self: *UnixPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.ioctl(@intCast(self.master_fd.?), c.TIOCSWINSZ, &winsize) != 0) return error.ResizeFailed;
@@ -312,13 +323,13 @@ pub const UnixPtyTransport = struct {
         self.last_rows = rows;
     }
     fn controlImpl(ptr: *anyopaque, signal: u8) void {
-        const self: *UnixPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
         if (self.child_pid) |pid| sendSignal(pid, signal);
     }
 };
 
-pub const AndroidPtyTransport = struct {
+pub const AndroidPty = struct {
     allocator: std.mem.Allocator,
     shell_path: [:0]u8,
     command: ?[:0]u8,
@@ -328,7 +339,7 @@ pub const AndroidPtyTransport = struct {
     last_cols: u16,
     last_rows: u16,
 
-    pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !AndroidPtyTransport {
+    pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !AndroidPty {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos and builtin.os.tag != .android) return error.UnsupportedPlatform;
         const shell_z = try allocator.dupeZ(u8, shell_path);
         errdefer allocator.free(shell_z);
@@ -337,18 +348,18 @@ pub const AndroidPtyTransport = struct {
         return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
-    pub fn deinit(self: *AndroidPtyTransport) void {
+    pub fn deinit(self: *AndroidPty) void {
         self.stopInternal();
         self.allocator.free(self.shell_path);
         if (self.command) |cmd| self.allocator.free(cmd);
         self.* = undefined;
     }
 
-    pub fn transport(self: *AndroidPtyTransport) Transport {
+    pub fn transport(self: *AndroidPty) Transport {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    fn startInternal(self: *AndroidPtyTransport) anyerror!void {
+    fn startInternal(self: *AndroidPty) anyerror!void {
         if (self.started) return error.AlreadyStarted;
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
@@ -370,7 +381,7 @@ pub const AndroidPtyTransport = struct {
         self.started = true;
     }
 
-    fn stopInternal(self: *AndroidPtyTransport) void {
+    fn stopInternal(self: *AndroidPty) void {
         if (!self.started) return;
         if (self.child_pid) |pid| {
             sendSignal(pid, @intCast(posix.SIG.TERM));
@@ -384,15 +395,15 @@ pub const AndroidPtyTransport = struct {
 
     const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
-        const self: *AndroidPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
     }
     fn stopImpl(ptr: *anyopaque) void {
-        const self: *AndroidPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.stopInternal();
     }
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
-        const self: *AndroidPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (bytes.len == 0) return 0;
         const n = posix.write(self.master_fd.?, bytes) catch |err| switch (err) {
@@ -402,7 +413,7 @@ pub const AndroidPtyTransport = struct {
         return n;
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
-        const self: *AndroidPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (buf.len == 0) return 0;
         const n = posix.read(self.master_fd.?, buf) catch |err| switch (err) {
@@ -412,7 +423,7 @@ pub const AndroidPtyTransport = struct {
         return n;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
-        const self: *AndroidPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.ioctl(@intCast(self.master_fd.?), c.TIOCSWINSZ, &winsize) != 0) return error.ResizeFailed;
@@ -420,7 +431,7 @@ pub const AndroidPtyTransport = struct {
         self.last_rows = rows;
     }
     fn controlImpl(ptr: *anyopaque, signal: u8) void {
-        const self: *AndroidPtyTransport = @ptrCast(@alignCast(ptr));
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
         if (self.child_pid) |pid| sendSignal(pid, signal);
     }
@@ -471,19 +482,19 @@ fn reapChild(pid: posix.pid_t, timeout_ms: i64) void {
     }
 }
 
-pub const LaneTransport = switch (build_options.transport_variant) {
-    .unix_pty => UnixPtyTransport,
-    .android_pty => AndroidPtyTransport,
+pub const Lane = switch (build_options.transport_variant) {
+    .unix_pty => UnixPty,
+    .android_pty => AndroidPty,
 };
 
 pub const transport_class = switch (build_options.transport_variant) {
-    .unix_pty => types.TransportClass.posix_pty,
-    .android_pty => types.TransportClass.android_pty,
+    .unix_pty => Class.posix_pty,
+    .android_pty => Class.android_pty,
 };
 
-pub fn initTransport(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !LaneTransport {
+pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !Lane {
     return switch (build_options.transport_variant) {
-        .unix_pty => LaneTransport.init(allocator, shell_path orelse "/bin/sh", command),
-        .android_pty => LaneTransport.init(allocator, shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), command),
+        .unix_pty => Lane.init(allocator, shell_path orelse "/bin/sh", command),
+        .android_pty => Lane.init(allocator, shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), command),
     };
 }

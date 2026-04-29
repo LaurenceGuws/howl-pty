@@ -3,11 +3,9 @@
 //! Reason: keep session focused on I/O orchestration only.
 
 const std = @import("std");
-const types = @import("types.zig");
 const transport_api = @import("transport.zig");
 
-pub const SessionStatus = types.SessionStatus;
-pub const TransportClass = types.TransportClass;
+pub const TransportClass = transport_api.Class;
 pub const Transport = transport_api.Transport;
 
 pub const Config = struct {
@@ -17,15 +15,20 @@ pub const Config = struct {
     pending_capacity: usize,
     transport: ?Transport = null,
 };
-
-pub const SessionSnapshot = struct {
+///  lifecycle status.
+pub const Status = enum {
+    idle,
+    active,
+    stopped,
+};
+pub const Snapshot = struct {
     cols: u16,
     rows: u16,
-    status: SessionStatus,
+    status: Status,
     resize_count: u32,
 };
 
-pub const SessionOps = struct {
+pub const Ops = struct {
     start_attempts: u32,
     start_successes: u32,
     start_failures: u32,
@@ -46,12 +49,12 @@ pub const Session = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
-    status: SessionStatus,
+    status: Status,
     pending: std.ArrayListUnmanaged(u8),
     pending_capacity: usize,
     transport: ?Transport,
     resize_count: u32,
-    ops: SessionOps,
+    ops: Ops,
 
     pub fn init(config: Config) !Session {
         if (config.cols == 0 or config.rows == 0) return error.InvalidConfig;
@@ -65,7 +68,7 @@ pub const Session = struct {
             .pending_capacity = config.pending_capacity,
             .transport = config.transport,
             .resize_count = 0,
-            .ops = std.mem.zeroes(SessionOps),
+            .ops = std.mem.zeroes(Ops),
         };
     }
 
@@ -157,7 +160,7 @@ pub const Session = struct {
         };
     }
 
-    pub fn snapshot(self: *const Session) SessionSnapshot {
+    pub fn snapshot(self: *const Session) Snapshot {
         return .{
             .cols = self.cols,
             .rows = self.rows,
@@ -166,7 +169,7 @@ pub const Session = struct {
         };
     }
 
-    pub fn restore(self: *Session, snap: SessionSnapshot) error{InvalidSnapshot}!void {
+    pub fn restore(self: *Session, snap: Snapshot) error{InvalidSnapshot}!void {
         if (snap.cols == 0 or snap.rows == 0) return error.InvalidSnapshot;
         self.cols = snap.cols;
         self.rows = snap.rows;
