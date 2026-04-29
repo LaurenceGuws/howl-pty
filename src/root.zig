@@ -6,6 +6,8 @@ const std = @import("std");
 
 /// Session facade module.
 pub const session = @import("session.zig");
+/// Terminal runtime/frame facade module.
+pub const terminal_api = @import("terminal_api.zig");
 /// Session runtime type.
 pub const Session = session.Session;
 /// Session configuration type.
@@ -34,6 +36,10 @@ pub const RuntimeTransport = transport.RuntimeTransport;
 pub const runtime_transport_class = transport.runtime_transport_class;
 /// Runtime transport constructor selected by compile-time lane configuration.
 pub const initRuntimeTransport = transport.initRuntimeTransport;
+/// Terminal surface runtime type.
+pub const TerminalSurface = terminal_api.TerminalSurface;
+/// Terminal frame model type.
+pub const TerminalFrameData = terminal_api.FrameData;
 /// Host loop helper module.
 pub const host_loop = @import("ops/host_loop.zig");
 /// Host loop tick summary type.
