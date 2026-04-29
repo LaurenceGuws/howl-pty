@@ -2,14 +2,6 @@
 //! Ownership: common types used by session and transport APIs.
 //! Reason: avoid type duplication across module boundaries.
 
-/// Session control signals propagated to transport implementations.
-pub const ControlSignal = enum {
-    hangup,
-    interrupt,
-    terminate,
-    resize_notify,
-};
-
 /// Session lifecycle status.
 pub const SessionStatus = enum {
     idle,
@@ -23,7 +15,7 @@ pub const TransportClass = enum {
     /// Uses fork(), openpty(), and POSIX process control (signals, ioctl).
     posix_pty,
     /// Android PTY transport for Android hosts.
-    /// Routes I/O through Android shell PTY runtime.
+    /// Routes I/O through Android shell PTY
     android_pty,
     /// ConPTY transport for Windows hosts (future).
     /// Uses Windows ConPTY API and Windows process management.

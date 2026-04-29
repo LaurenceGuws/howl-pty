@@ -8,7 +8,7 @@ const TransportVariant = enum {
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const transport_variant = b.option([]const u8, "transport-variant", "Runtime transport lane for howl-session") orelse "unix_pty";
+    const transport_variant = b.option([]const u8, "transport-variant", "transport lane for howl-session") orelse "unix_pty";
 
     const vt_core_dep = b.dependency("vt_core", .{
         .target = target,

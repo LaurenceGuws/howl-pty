@@ -16,9 +16,9 @@ test "host API: all symbols exported" {
     _ = root.FailTransport;
     _ = root.AndroidPtyTransport;
     _ = root.UnixPtyTransport;
-    _ = root.RuntimeTransport;
-    _ = root.runtime_transport_class;
-    _ = root.initRuntimeTransport;
+    _ = root.Transport;
+    _ = root.transport_class;
+    _ = root.initTransport;
     _ = root.HostLoopTick;
     _ = root.host_loop.tick;
 }
@@ -76,8 +76,8 @@ test "host API: TransportClass required variants present" {
     _ = root.TransportClass.conpty;
 }
 
-test "host API: runtime transport class must be a declared variant" {
-    switch (root.runtime_transport_class) {
+test "host API: transport class must be a declared variant" {
+    switch (root.transport_class) {
         .posix_pty, .android_pty => {},
         .conpty => unreachable,
     }

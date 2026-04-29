@@ -4,11 +4,11 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const core = @import("../session/core.zig");
+const core = @import("../session.zig");
 const transport_api = @import("../transport.zig");
-const conformance_checkpoint = @import("../test_support/conformance_checkpoint.zig");
-const perf = @import("../test_support/perf_harness.zig");
-const reliability = @import("../test_support/reliability_harness.zig");
+const conformance_checkpoint = @import("../testing/support/conformance_checkpoint.zig");
+const perf = @import("../testing/support/perf_harness.zig");
+const reliability = @import("../testing/support/reliability_harness.zig");
 
 const Session = core.Session;
 const ControlSignal = core.ControlSignal;
@@ -1422,7 +1422,7 @@ test "vt_core integration: apply feeds engine when no transport" {
     try std.testing.expectEqual(@as(usize, 5), n);
 
     // Engine should have processed the text (null-transport mode)
-    const screen = s.engine.screen();
+    const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
@@ -1438,7 +1438,7 @@ test "vt_core integration: empty apply is safe" {
     const n = s.apply();
     try std.testing.expectEqual(@as(usize, 0), n);
 
-    const screen = s.engine.screen();
+    const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
@@ -1455,7 +1455,7 @@ test "vt_core integration: feedProcessOutput processes engine bytes" {
     try s.feedProcessOutput("output");
 
     // Engine should have processed the output
-    const screen = s.engine.screen();
+    const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
@@ -1471,12 +1471,12 @@ test "vt_core integration: deterministic behavior across cycles (null transport)
 
     try s1.feed("ABC");
     _ = s1.apply();
-    const seq1_after_abc = s1.engine.queuedEventCount();
+    const seq1_after_abc = s1.vt.queuedEventCount();
 
     // Cycle 2 (same session)
     try s1.feed("DEF");
     _ = s1.apply();
-    _ = s1.engine.queuedEventCount();
+    _ = s1.vt.queuedEventCount();
 
     // Create second session with same initial config
     var s2 = try Session.init(.{
@@ -1489,7 +1489,7 @@ test "vt_core integration: deterministic behavior across cycles (null transport)
 
     try s2.feed("ABC");
     _ = s2.apply();
-    const seq2_after_abc = s2.engine.queuedEventCount();
+    const seq2_after_abc = s2.vt.queuedEventCount();
 
     // After same feed/apply in both sessions (null transport), behavior should match
     try std.testing.expectEqual(seq1_after_abc, seq2_after_abc);
@@ -1504,7 +1504,7 @@ test "vt_core integration: resize keeps session and engine dims consistent" {
     });
     defer s.deinit();
 
-    const screen_before = s.engine.screen();
+    const screen_before = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen_before.cols);
     try std.testing.expectEqual(@as(u16, 24), screen_before.rows);
 
@@ -1514,7 +1514,7 @@ test "vt_core integration: resize keeps session and engine dims consistent" {
     try std.testing.expectEqual(@as(u16, 50), s.rows);
 
     // Engine dimensions now match session (engine was recreated with new dims)
-    const screen_after = s.engine.screen();
+    const screen_after = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 132), screen_after.cols);
     try std.testing.expectEqual(@as(u16, 50), screen_after.rows);
 }
@@ -1535,7 +1535,7 @@ test "vt_core integration: reset clears pending but preserves engine" {
     try std.testing.expectEqual(@as(usize, 0), s.apply());
 
     // Engine should still be functional
-    const screen = s.engine.screen();
+    const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
@@ -1558,7 +1558,7 @@ test "vt_core integration: apply flushes to transport or engine (null)" {
     try std.testing.expectEqual(@as(usize, 2), s.apply());
 
     // In null-transport mode, pending is fed to engine; no transport writes
-    const screen = s.engine.screen();
+    const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
@@ -1632,7 +1632,7 @@ test "regression: R1 I/O direction — feedProcessOutput feeds engine" {
     defer s.deinit();
 
     try s.feedProcessOutput("output");
-    const screen = s.engine.screen();
+    const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
@@ -1649,7 +1649,7 @@ test "regression: R2 resize consistency — engine dims match session" {
     try std.testing.expectEqual(@as(u16, 120), s.cols);
     try std.testing.expectEqual(@as(u16, 40), s.rows);
 
-    const screen = s.engine.screen();
+    const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 120), screen.cols);
     try std.testing.expectEqual(@as(u16, 40), screen.rows);
 }

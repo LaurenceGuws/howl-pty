@@ -6,7 +6,7 @@
 // Encodes the ordering api: outbound apply, then inbound feedProcessOutput.
 
 const std = @import("std");
-const session = @import("../session.zig");
+const session = @import("session.zig");
 
 const Session = session.Session;
 
@@ -61,8 +61,8 @@ pub fn tick(sess: *Session, transport_input: []const u8) anyerror!HostLoopTick {
 // ============================================================================
 
 const testing = std.testing;
-const Session_ = @import("../session/core.zig").Session;
-const mem_transport = @import("../transport/mem.zig");
+const Session_ = @import("session.zig").Session;
+const mem_transport = @import("transport.zig");
 
 test "host_loop: outbound only (pending queue drained)" {
     const allocator = testing.allocator;

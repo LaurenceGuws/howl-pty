@@ -6,9 +6,7 @@ const std = @import("std");
 
 /// Session facade module.
 pub const session = @import("session.zig");
-/// Terminal runtime/frame facade module.
-pub const terminal_api = @import("terminal_api.zig");
-/// Session runtime type.
+/// Session type.
 pub const Session = session.Session;
 /// Session configuration type.
 pub const SessionConfig = session.Config;
@@ -30,27 +28,23 @@ pub const FailTransport = transport.FailTransport;
 pub const AndroidPtyTransport = transport.AndroidPtyTransport;
 /// POSIX PTY transport implementation.
 pub const UnixPtyTransport = transport.UnixPtyTransport;
-/// Runtime transport selected by compile-time lane configuration.
-pub const RuntimeTransport = transport.RuntimeTransport;
-/// Runtime transport class selected by compile-time lane configuration.
-pub const runtime_transport_class = transport.runtime_transport_class;
-/// Runtime transport constructor selected by compile-time lane configuration.
-pub const initRuntimeTransport = transport.initRuntimeTransport;
-/// Terminal surface runtime type.
-pub const TerminalSurface = terminal_api.TerminalSurface;
-/// Terminal frame model type.
-pub const TerminalFrameData = terminal_api.FrameData;
+/// Transport selected by compile-time lane configuration.
+pub const LaneTransport = transport.LaneTransport;
+/// transport class selected by compile-time lane configuration.
+pub const transport_class = transport.transport_class;
+/// transport constructor selected by compile-time lane configuration.
+pub const initTransport = transport.initTransport;
 /// Host loop helper module.
-pub const host_loop = @import("ops/host_loop.zig");
+pub const host_loop = @import("host_loop.zig");
 /// Host loop tick summary type.
 pub const HostLoopTick = host_loop.HostLoopTick;
 
 test "host API: facade wiring — transport symbols match sub-module origins" {
-    const t_iface = @import("transport/interface.zig");
-    const t_mem = @import("transport/mem.zig");
-    const t_fail = @import("transport/fail.zig");
-    const t_android_pty = @import("transport/android_pty.zig");
-    const t_pty = @import("transport/unix_pty.zig");
+    const t_iface = @import("transport.zig");
+    const t_mem = @import("transport.zig");
+    const t_fail = @import("transport.zig");
+    const t_android_pty = @import("transport.zig");
+    const t_pty = @import("transport.zig");
     comptime {
         std.debug.assert(Transport == t_iface.Transport);
         std.debug.assert(MemTransport == t_mem.MemTransport);
@@ -61,7 +55,7 @@ test "host API: facade wiring — transport symbols match sub-module origins" {
 }
 
 test "host API: facade wiring — session symbols match sub-module origins" {
-    const s_core = @import("session/core.zig");
+    const s_core = @import("session.zig");
     comptime {
         std.debug.assert(Session == s_core.Session);
         std.debug.assert(SessionConfig == s_core.Config);
@@ -70,12 +64,12 @@ test "host API: facade wiring — session symbols match sub-module origins" {
     }
 }
 
-const _host_integration_test = @import("conformance/host_integration_test.zig");
-const _api_api_tests = @import("test/api_api.zig");
-const _session_api_tests = @import("test/session_api.zig");
+const _host_integration_test = @import("testing/host_integration_test.zig");
+const _api_tests = @import("testing/api_test.zig");
+const _session_tests = @import("testing/session_test.zig");
 
 test "root: import hooks" {
     _ = _host_integration_test;
-    _ = _api_api_tests;
-    _ = _session_api_tests;
+    _ = _api_tests;
+    _ = _session_tests;
 }

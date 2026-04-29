@@ -7,8 +7,8 @@
 
 const std = @import("std");
 const session_mod = @import("../session.zig");
-const host_loop = @import("../ops/host_loop.zig");
-const transport_mem = @import("../transport/mem.zig");
+const host_loop = @import("../host_loop.zig");
+const transport_mem = @import("../transport.zig");
 
 const Session = session_mod.Session;
 const HostLoopTick = host_loop.HostLoopTick;

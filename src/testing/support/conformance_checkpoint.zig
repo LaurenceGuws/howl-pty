@@ -2,7 +2,8 @@
 //! Ownership: test-support checkpoint helpers.
 //! Reason: keep boundary assertions concise and reusable.
 
-const types = @import("../types.zig");
+const types = @import("../../types.zig");
+const vt_core = @import("vt_core");
 
 /// Snapshot of observable session state used by conformance tests.
 pub const ConformanceCheckpoint = struct {
@@ -10,7 +11,7 @@ pub const ConformanceCheckpoint = struct {
     cols: u16,
     rows: u16,
     resize_count: u32,
-    last_control_signal: ?types.ControlSignal,
+    last_control_signal: ?vt_core.ControlSignal,
     pending_len: usize,
 
     /// Copies the session state needed for boundary and conformance checks.
