@@ -13,7 +13,7 @@ pub const ControlSignal = _core.ControlSignal;
 pub const SessionStatus = _core.SessionStatus;
 /// Transport portability class enum.
 pub const TransportClass = types.TransportClass;
-/// Transport contract wrapper type.
+/// Transport api wrapper type.
 pub const Transport = _core.Transport;
 /// Session configuration type.
 pub const Config = _core.Config;

@@ -1,8 +1,8 @@
-//! Responsibility: validate host session-loop contracts against session contracts.
+//! Responsibility: validate host session-loop apis against session apis.
 //! Ownership: conformance evidence test suite.
 //! Reason: ensure loop and lifecycle behavior remain deterministic under composition.
 
-// Integration tests for host integration contract using session + host_loop.
+// Integration tests for host integration api using session + host_loop.
 // Validates documented host loop end-to-end: feed → apply → feedProcessOutput.
 
 const std = @import("std");

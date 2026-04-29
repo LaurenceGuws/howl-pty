@@ -1,6 +1,6 @@
 //! Responsibility: implement Android PTY transport operations.
 //! Ownership: Android PTY transport implementation.
-//! Reason: provide a real PTY-backed Android lane under the shared transport contract.
+//! Reason: provide a real PTY-backed Android lane under the shared transport api.
 
 const std = @import("std");
 const builtin = @import("builtin");

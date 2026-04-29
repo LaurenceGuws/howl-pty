@@ -75,7 +75,7 @@ else
         };
     };
 
-/// Transport contract wrapper.
+/// Transport api wrapper.
 pub const Transport = _interface.Transport;
 /// In-memory deterministic transport implementation.
 pub const MemTransport = _mem.MemTransport;

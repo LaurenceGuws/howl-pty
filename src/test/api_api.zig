@@ -1,6 +1,6 @@
-//! Responsibility: verify the stable howl-session package API shape and contracts.
+//! Responsibility: verify the stable howl-session package API shape and apis.
 //! Ownership: API shape assertions and conformance tests.
-//! Reason: isolate API contract verification from root module wiring.
+//! Reason: isolate API api verification from root module wiring.
 
 const std = @import("std");
 const root = @import("../root.zig");

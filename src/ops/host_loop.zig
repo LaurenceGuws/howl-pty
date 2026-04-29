@@ -3,7 +3,7 @@
 //! Reason: make outbound/inbound loop sequencing explicit and reusable.
 
 // Host loop envelope for session I/O coordination.
-// Encodes the ordering contract: outbound apply, then inbound feedProcessOutput.
+// Encodes the ordering api: outbound apply, then inbound feedProcessOutput.
 
 const std = @import("std");
 const session = @import("../session.zig");

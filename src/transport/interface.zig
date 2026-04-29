@@ -1,4 +1,4 @@
-//! Responsibility: define the transport contract vtable.
+//! Responsibility: define the transport api vtable.
 //! Ownership: host-to-session transport boundary.
 //! Reason: support pluggable transport implementations with consistent semantics.
 
