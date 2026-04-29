@@ -1407,8 +1407,8 @@ test "control api: control after stop is safe" {
 
 // VT Core Integration Tests
 
-test "vt_core integration: apply feeds engine when no transport" {
-    // No transport: apply() should feed input directly to engine
+test "vt_core integration: apply feeds vt_core when no transport" {
+    // No transport: apply() should feed input directly to vt_core
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1421,7 +1421,7 @@ test "vt_core integration: apply feeds engine when no transport" {
     const n = s.apply();
     try std.testing.expectEqual(@as(usize, 5), n);
 
-    // Engine should have processed the text (null-transport mode)
+    // VtCore should have processed the text (null-transport mode)
     const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
@@ -1442,7 +1442,7 @@ test "vt_core integration: empty apply is safe" {
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
-test "vt_core integration: feedProcessOutput processes engine bytes" {
+test "vt_core integration: feedProcessOutput processes vt_core bytes" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1454,7 +1454,7 @@ test "vt_core integration: feedProcessOutput processes engine bytes" {
     // Process output (from PTY) goes through feedProcessOutput
     try s.feedProcessOutput("output");
 
-    // Engine should have processed the output
+    // VtCore should have processed the output
     const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
@@ -1495,7 +1495,7 @@ test "vt_core integration: deterministic behavior across cycles (null transport)
     try std.testing.expectEqual(seq1_after_abc, seq2_after_abc);
 }
 
-test "vt_core integration: resize keeps session and engine dims consistent" {
+test "vt_core integration: resize keeps session and vt_core dims consistent" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1513,13 +1513,13 @@ test "vt_core integration: resize keeps session and engine dims consistent" {
     try std.testing.expectEqual(@as(u16, 132), s.cols);
     try std.testing.expectEqual(@as(u16, 50), s.rows);
 
-    // Engine dimensions now match session (engine was recreated with new dims)
+    // VtCore dimensions now match session (vt_core was recreated with new dims)
     const screen_after = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 132), screen_after.cols);
     try std.testing.expectEqual(@as(u16, 50), screen_after.rows);
 }
 
-test "vt_core integration: reset clears pending but preserves engine" {
+test "vt_core integration: reset clears pending but preserves vt_core" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1534,12 +1534,12 @@ test "vt_core integration: reset clears pending but preserves engine" {
     // Pending should be cleared
     try std.testing.expectEqual(@as(usize, 0), s.apply());
 
-    // Engine should still be functional
+    // VtCore should still be functional
     const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
-test "vt_core integration: apply flushes to transport or engine (null)" {
+test "vt_core integration: apply flushes to transport or vt_core (null)" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1557,7 +1557,7 @@ test "vt_core integration: apply flushes to transport or engine (null)" {
     try s.feed("CD");
     try std.testing.expectEqual(@as(usize, 2), s.apply());
 
-    // In null-transport mode, pending is fed to engine; no transport writes
+    // In null-transport mode, pending is fed to vt_core; no transport writes
     const screen = s.vt.screen();
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
@@ -1600,7 +1600,7 @@ test "unix_pty transport: session lifecycle with shell (Linux only)" {
 // LMVP-R: Regression tests for fixed defects
 // ============================================================================
 
-test "regression: R1 I/O direction — apply writes to transport, not engine" {
+test "regression: R1 I/O direction — apply writes to transport, not vt_core" {
     var mt = transport_api.MemTransport.init(std.testing.allocator);
     defer mt.deinit();
     var s = try Session.init(.{
@@ -1616,13 +1616,13 @@ test "regression: R1 I/O direction — apply writes to transport, not engine" {
     try s.feed("hello");
     const n = s.apply();
 
-    // Bytes flushed to transport, not engine
+    // Bytes flushed to transport, not vt_core
     try std.testing.expectEqual(@as(usize, 5), n);
     // MemTransport records written bytes in tx
     try std.testing.expectEqual(@as(usize, 5), mt.tx.items.len);
 }
 
-test "regression: R1 I/O direction — feedProcessOutput feeds engine" {
+test "regression: R1 I/O direction — feedProcessOutput feeds vt_core" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
@@ -1636,7 +1636,7 @@ test "regression: R1 I/O direction — feedProcessOutput feeds engine" {
     try std.testing.expectEqual(@as(u16, 80), screen.cols);
 }
 
-test "regression: R2 resize consistency — engine dims match session" {
+test "regression: R2 resize consistency — vt_core dims match session" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,

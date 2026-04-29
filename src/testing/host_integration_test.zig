@@ -66,7 +66,7 @@ test "host loop: inbound transport bytes → feedProcessOutput via tick" {
     // Execute tick with transport output
     const result = try host_loop.tick(&sess, transport_output);
 
-    // Validate inbound phase: transport output fed to engine
+    // Validate inbound phase: transport output fed to vt_core
     try testing.expect(result.inbound_fed == transport_output.len);
     try testing.expect(result.has_inbound);
     // No outbound (no pending)

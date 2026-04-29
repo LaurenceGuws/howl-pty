@@ -15,7 +15,7 @@ const Session = session.Session;
 pub const HostLoopTick = struct {
     /// Bytes drained from pending queue in outbound phase.
     outbound_drained: usize,
-    /// Bytes fed to engine in inbound phase.
+    /// Bytes fed to vt_core in inbound phase.
     inbound_fed: usize,
     /// True if outbound made progress (drained > 0).
     has_outbound: bool,
@@ -34,14 +34,14 @@ pub const HostLoopTick = struct {
 /// Postcondition: Transport input bytes have been passed to session.feedProcessOutput().
 ///
 /// Phase 1 (Outbound): Attempts to drain pending input queue to transport.
-/// Phase 2 (Inbound): Feeds transport output bytes to the terminal engine.
+/// Phase 2 (Inbound): Feeds transport output bytes to the terminal vt_core.
 ///
 /// Returns a summary of progress in each phase. Errors propagate from inbound feed.
 pub fn tick(sess: *Session, transport_input: []const u8) anyerror!HostLoopTick {
     // Phase 1: Outbound - flush pending input to transport
     const outbound_drained = sess.apply();
 
-    // Phase 2: Inbound - feed transport output to engine
+    // Phase 2: Inbound - feed transport output to vt_core
     var inbound_fed: usize = 0;
     if (transport_input.len > 0) {
         try sess.feedProcessOutput(transport_input);
@@ -90,7 +90,7 @@ test "host_loop: outbound only (pending queue drained)" {
     try testing.expect(result.hasProgress());
 }
 
-test "host_loop: inbound only (engine fed)" {
+test "host_loop: inbound only (vt_core fed)" {
     const allocator = testing.allocator;
 
     var session_handle = try Session_.init(.{
