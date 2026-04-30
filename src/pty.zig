@@ -10,6 +10,7 @@ const posix = std.posix;
 const c = @cImport({
     @cInclude("unistd.h");
     @cInclude("fcntl.h");
+    @cInclude("stdlib.h");
     @cInclude("sys/ioctl.h");
     if (builtin.os.tag == .macos) {
         @cInclude("util.h");
@@ -451,6 +452,9 @@ fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:0]co
     try posix.dup2(slave_fd, 2);
     if (slave_fd > 2) posix.close(slave_fd);
 
+    _ = c.setenv("TERM", "xterm-256color", 1);
+    _ = c.setenv("PS1", "howl$ ", 1);
+
     if (command) |cmd| {
         const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-lc", cmd.ptr };
         const envp: [*:null]const ?[*:0]const u8 = @ptrCast(@constCast(std.c.environ));
@@ -458,7 +462,7 @@ fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:0]co
         posix.exit(127);
     }
 
-    const argv = [_:null]?[*:0]const u8{shell_path.ptr};
+    const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-i" };
     const envp: [*:null]const ?[*:0]const u8 = @ptrCast(@constCast(std.c.environ));
     _ = posix.execvpeZ(shell_path.ptr, &argv, envp) catch {};
     posix.exit(127);
