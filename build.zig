@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const TransportVariant = enum {
+const PtyVariant = enum {
     unix_pty,
     android_pty,
 };
@@ -8,7 +8,7 @@ const TransportVariant = enum {
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const transport_variant = b.option([]const u8, "transport-variant", "transport lane for howl-session") orelse "unix_pty";
+    const pty_variant = b.option([]const u8, "pty-variant", "pty variant for howl-session") orelse "unix_pty";
 
     const mod = b.addModule("howl_session", .{
         .root_source_file = b.path("src/root.zig"),
@@ -17,15 +17,15 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
 
-    const selected_variant: TransportVariant = if (std.mem.eql(u8, transport_variant, "unix_pty"))
+    const selected_variant: PtyVariant = if (std.mem.eql(u8, pty_variant, "unix_pty"))
         .unix_pty
-    else if (std.mem.eql(u8, transport_variant, "android_pty"))
+    else if (std.mem.eql(u8, pty_variant, "android_pty"))
         .android_pty
     else
-        std.debug.panic("unsupported howl-session transport variant: {s}", .{transport_variant});
+        std.debug.panic("unsupported howl-session pty variant: {s}", .{pty_variant});
 
     const build_options = b.addOptions();
-    build_options.addOption(TransportVariant, "transport_variant", selected_variant);
+    build_options.addOption(PtyVariant, "pty_variant", selected_variant);
     mod.addOptions("build_options", build_options);
 
     const mod_tests = b.addTest(.{ .root_module = mod });

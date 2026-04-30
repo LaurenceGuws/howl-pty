@@ -1,19 +1,19 @@
 //! Responsibility: session queue/lifecycle boundary.
-//! Ownership: pending input queue, transport lifecycle, resize tracking.
+//! Ownership: pending input queue, pty lifecycle, resize tracking.
 //! Reason: keep session focused on I/O orchestration only.
 
 const std = @import("std");
-const transport_api = @import("transport.zig");
+const pty_api = @import("pty.zig");
 
-pub const TransportClass = transport_api.Class;
-pub const Transport = transport_api.Transport;
+pub const PtyClass = pty_api.PtyClass;
+pub const Pty = pty_api.Pty;
 
 pub const Config = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
     pending_capacity: usize,
-    transport: ?Transport = null,
+    pty: ?Pty = null,
 };
 ///  lifecycle status.
 pub const Status = enum {
@@ -52,7 +52,7 @@ pub const Session = struct {
     status: Status,
     pending: std.ArrayListUnmanaged(u8),
     pending_capacity: usize,
-    transport: ?Transport,
+    pty: ?Pty,
     resize_count: u32,
     ops: Ops,
 
@@ -66,7 +66,7 @@ pub const Session = struct {
             .status = .idle,
             .pending = .empty,
             .pending_capacity = config.pending_capacity,
-            .transport = config.transport,
+            .pty = config.pty,
             .resize_count = 0,
             .ops = std.mem.zeroes(Ops),
         };
@@ -80,7 +80,7 @@ pub const Session = struct {
     pub fn start(self: *Session) !void {
         self.ops.start_attempts += 1;
         if (self.status == .active) return error.AlreadyStarted;
-        if (self.transport) |t| t.start() catch |err| {
+        if (self.pty) |t| t.start() catch |err| {
             self.ops.start_failures += 1;
             return err;
         };
@@ -91,7 +91,7 @@ pub const Session = struct {
     pub fn stop(self: *Session) void {
         self.ops.stop_calls += 1;
         if (self.status == .active) {
-            if (self.transport) |t| t.stop();
+            if (self.pty) |t| t.stop();
         }
         self.status = .stopped;
     }
@@ -116,7 +116,7 @@ pub const Session = struct {
         var drained: usize = 0;
 
         if (n > 0) {
-            if (self.transport) |t| {
+            if (self.pty) |t| {
                 const written = t.write(self.pending.items) catch {
                     self.ops.apply_transport_write_errors += 1;
                     return 0;
@@ -154,7 +154,7 @@ pub const Session = struct {
         self.resize_count +%= 1;
         self.ops.resize_valid_calls += 1;
 
-        if (self.transport) |t| t.resize(cols, rows) catch |err| {
+        if (self.pty) |t| t.resize(cols, rows) catch |err| {
             self.ops.resize_transport_errors += 1;
             return err;
         };

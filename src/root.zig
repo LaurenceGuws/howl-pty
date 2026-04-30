@@ -8,34 +8,34 @@ pub const session = @import("session.zig");
 pub const Session = session.Session;
 pub const SessionConfig = session.Config;
 pub const SessionStatus = session.Status;
-pub const TransportClass = session.TransportClass;
+pub const PtyClass = session.PtyClass;
 
-pub const transport = @import("transport.zig");
-pub const Transport = transport.Transport;
-pub const Mem = transport.Mem;
-pub const Partial = transport.Partial;
-pub const Fail = transport.Fail;
-pub const AndroidPty = transport.AndroidPty;
-pub const UnixPty = transport.UnixPty;
-pub const Lane = transport.Lane;
-pub const transport_class = transport.transport_class;
-pub const init = transport.init;
+pub const pty = @import("pty.zig");
+pub const Pty = pty.Pty;
+pub const Mem = pty.Mem;
+pub const Partial = pty.Partial;
+pub const Fail = pty.Fail;
+pub const AndroidPty = pty.AndroidPty;
+pub const UnixPty = pty.UnixPty;
+pub const PtyImpl = pty.PtyImpl;
+pub const pty_class = pty.pty_class;
+pub const init_pty = pty.init;
 
 // Compatibility aliases for in-file migrated tests.
-pub const MemTransport = Mem;
-pub const PartialTransport = Partial;
-pub const FailTransport = Fail;
-pub const AndroidPtyTransport = AndroidPty;
-pub const UnixPtyTransport = UnixPty;
-pub const initTransport = init;
+pub const MemPty = Mem;
+pub const PartialPty = Partial;
+pub const FailPty = Fail;
+pub const AndroidPtyImpl = AndroidPty;
+pub const UnixPtyImpl = UnixPty;
+pub const initPty = init_pty;
 
 test "facade wiring" {
     const s = @import("session.zig");
-    const t = @import("transport.zig");
+    const t = @import("pty.zig");
     comptime {
         std.debug.assert(Session == s.Session);
         std.debug.assert(SessionConfig == s.Config);
-        std.debug.assert(Transport == t.Transport);
+        std.debug.assert(Pty == t.Pty);
         std.debug.assert(Mem == t.Mem);
         std.debug.assert(Fail == t.Fail);
     }
@@ -45,15 +45,15 @@ test "api exports compile" {
     _ = Session;
     _ = SessionConfig;
     _ = SessionStatus;
-    _ = TransportClass;
-    _ = Transport;
-    _ = MemTransport;
-    _ = PartialTransport;
-    _ = FailTransport;
-    _ = AndroidPtyTransport;
-    _ = UnixPtyTransport;
-    _ = transport_class;
-    _ = initTransport;
+    _ = PtyClass;
+    _ = Pty;
+    _ = MemPty;
+    _ = PartialPty;
+    _ = FailPty;
+    _ = AndroidPtyImpl;
+    _ = UnixPtyImpl;
+    _ = pty_class;
+    _ = initPty;
 }
 
 test "session method surface" {
@@ -80,17 +80,17 @@ test "init invalid config" {
         .cols = 0,
         .rows = 24,
         .pending_capacity = 32,
-        .transport = null,
+        .pty = null,
     }));
 }
 
-test "feed apply without transport drains queue" {
+test "feed apply without pty drains queue" {
     var s = try Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 64,
-        .transport = null,
+        .pty = null,
     });
     defer s.deinit();
 
@@ -99,8 +99,8 @@ test "feed apply without transport drains queue" {
     try std.testing.expectEqual(@as(usize, 0), s.pending.items.len);
 }
 
-test "start stop with mem transport" {
-    var mt = MemTransport.init(std.testing.allocator);
+test "start stop with mem pty" {
+    var mt = MemPty.init(std.testing.allocator);
     defer mt.deinit();
 
     var s = try Session.init(.{
@@ -108,7 +108,7 @@ test "start stop with mem transport" {
         .cols = 80,
         .rows = 24,
         .pending_capacity = 64,
-        .transport = mt.transport(),
+        .pty = mt.pty(),
     });
     defer s.deinit();
 
@@ -124,7 +124,7 @@ test "resize updates dims and counter" {
         .cols = 80,
         .rows = 24,
         .pending_capacity = 64,
-        .transport = null,
+        .pty = null,
     });
     defer s.deinit();
 
@@ -140,7 +140,7 @@ test "snapshot restore" {
         .cols = 80,
         .rows = 24,
         .pending_capacity = 64,
-        .transport = null,
+        .pty = null,
     });
     defer s.deinit();
 

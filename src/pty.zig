@@ -1,6 +1,6 @@
-//! Responsibility: publish transport interface, implementations, and selection.
-//! Ownership: host-to-session transport boundary and lane binding.
-//! Reason: keep transport imports stable for hosts and tests in one file.
+//! Responsibility: publish pty interface, implementations, and selection.
+//! Ownership: host-to-session pty boundary and implementation binding.
+//! Reason: keep pty imports stable for hosts and tests in one file.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -19,7 +19,7 @@ const c = @cImport({
     @cInclude("signal.h");
 });
 
-pub const Transport = struct {
+pub const Pty = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
@@ -32,34 +32,34 @@ pub const Transport = struct {
         control: *const fn (ptr: *anyopaque, signal: u8) void,
     };
 
-    pub fn start(self: Transport) anyerror!void {
+    pub fn start(self: Pty) anyerror!void {
         return self.vtable.start(self.ptr);
     }
-    pub fn stop(self: Transport) void {
+    pub fn stop(self: Pty) void {
         self.vtable.stop(self.ptr);
     }
-    pub fn write(self: Transport, bytes: []const u8) anyerror!usize {
+    pub fn write(self: Pty, bytes: []const u8) anyerror!usize {
         return self.vtable.write(self.ptr, bytes);
     }
-    pub fn read(self: Transport, buf: []u8) anyerror!usize {
+    pub fn read(self: Pty, buf: []u8) anyerror!usize {
         return self.vtable.read(self.ptr, buf);
     }
-    pub fn resize(self: Transport, cols: u16, rows: u16) anyerror!void {
+    pub fn resize(self: Pty, cols: u16, rows: u16) anyerror!void {
         return self.vtable.resize(self.ptr, cols, rows);
     }
-    pub fn control(self: Transport, signal: u8) void {
+    pub fn control(self: Pty, signal: u8) void {
         self.vtable.control(self.ptr, signal);
     }
 };
 ///  portability class used for host-level selection.
-pub const Class = enum {
-    /// POSIX PTY transport for Linux and macOS hosts.
+pub const PtyClass = enum {
+    /// POSIX PTY pty for Linux and macOS hosts.
     /// Uses fork(), openpty(), and POSIX process control (signals, ioctl).
     posix_pty,
-    /// Android PTY transport for Android hosts.
+    /// Android PTY pty for Android hosts.
     /// Routes I/O through Android shell PTY
     android_pty,
-    /// ConPTY transport for Windows hosts (future).
+    /// ConPTY pty for Windows hosts (future).
     /// Uses Windows ConPTY API and Windows process management.
     conpty,
 };
@@ -83,11 +83,11 @@ pub const Mem = struct {
         self.* = undefined;
     }
 
-    pub fn transport(self: *Mem) Transport {
+    pub fn pty(self: *Mem) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
 
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
@@ -142,11 +142,11 @@ pub const Partial = struct {
         self.* = undefined;
     }
 
-    pub fn transport(self: *Partial) Transport {
+    pub fn pty(self: *Partial) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
 
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *Partial = @ptrCast(@alignCast(ptr));
@@ -187,11 +187,11 @@ pub const Fail = struct {
     pub fn deinit(self: *Fail) void {
         _ = self;
     }
-    pub fn transport(self: *Fail) Transport {
+    pub fn pty(self: *Fail) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         _ = ptr;
         return error.Failed;
@@ -247,7 +247,7 @@ pub const UnixPty = struct {
         self.* = undefined;
     }
 
-    pub fn transport(self: *UnixPty) Transport {
+    pub fn pty(self: *UnixPty) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
@@ -285,7 +285,7 @@ pub const UnixPty = struct {
         self.started = false;
     }
 
-    const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
@@ -355,7 +355,7 @@ pub const AndroidPty = struct {
         self.* = undefined;
     }
 
-    pub fn transport(self: *AndroidPty) Transport {
+    pub fn pty(self: *AndroidPty) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
@@ -393,7 +393,7 @@ pub const AndroidPty = struct {
         self.started = false;
     }
 
-    const vtable: Transport.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
@@ -482,19 +482,19 @@ fn reapChild(pid: posix.pid_t, timeout_ms: i64) void {
     }
 }
 
-pub const Lane = switch (build_options.transport_variant) {
+pub const PtyImpl = switch (build_options.pty_variant) {
     .unix_pty => UnixPty,
     .android_pty => AndroidPty,
 };
 
-pub const transport_class = switch (build_options.transport_variant) {
-    .unix_pty => Class.posix_pty,
-    .android_pty => Class.android_pty,
+pub const pty_class = switch (build_options.pty_variant) {
+    .unix_pty => PtyClass.posix_pty,
+    .android_pty => PtyClass.android_pty,
 };
 
-pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !Lane {
-    return switch (build_options.transport_variant) {
-        .unix_pty => Lane.init(allocator, shell_path orelse "/bin/sh", command),
-        .android_pty => Lane.init(allocator, shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), command),
+pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !PtyImpl {
+    return switch (build_options.pty_variant) {
+        .unix_pty => PtyImpl.init(allocator, shell_path orelse "/bin/sh", command),
+        .android_pty => PtyImpl.init(allocator, shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), command),
     };
 }
