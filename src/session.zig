@@ -8,6 +8,7 @@ const pty_api = @import("pty.zig");
 pub const PtyClass = pty_api.PtyClass;
 pub const Pty = pty_api.Pty;
 
+/// Session initialization config.
 pub const Config = struct {
     allocator: std.mem.Allocator,
     cols: u16,
@@ -15,12 +16,13 @@ pub const Config = struct {
     pending_capacity: usize,
     pty: ?Pty = null,
 };
-///  lifecycle status.
+/// Session lifecycle status.
 pub const Status = enum {
     idle,
     active,
     stopped,
 };
+/// Serializable session snapshot.
 pub const Snapshot = struct {
     cols: u16,
     rows: u16,
@@ -28,6 +30,7 @@ pub const Snapshot = struct {
     resize_count: u32,
 };
 
+/// Operation counters for conformance/testing.
 pub const Ops = struct {
     start_attempts: u32,
     start_successes: u32,
@@ -45,6 +48,7 @@ pub const Ops = struct {
     resize_transport_errors: u32,
 };
 
+/// Session queue/lifecycle orchestrator.
 pub const Session = struct {
     allocator: std.mem.Allocator,
     cols: u16,
@@ -56,6 +60,7 @@ pub const Session = struct {
     resize_count: u32,
     ops: Ops,
 
+    /// Initialize session state.
     pub fn init(config: Config) !Session {
         if (config.cols == 0 or config.rows == 0) return error.InvalidConfig;
         if (config.pending_capacity == 0) return error.InvalidConfig;
@@ -72,11 +77,13 @@ pub const Session = struct {
         };
     }
 
+    /// Release queue memory.
     pub fn deinit(self: *Session) void {
         self.pending.deinit(self.allocator);
         self.* = undefined;
     }
 
+    /// Start the transport if configured.
     pub fn start(self: *Session) !void {
         self.ops.start_attempts += 1;
         if (self.status == .active) return error.AlreadyStarted;
@@ -88,6 +95,7 @@ pub const Session = struct {
         self.ops.start_successes += 1;
     }
 
+    /// Stop the transport and mark session stopped.
     pub fn stop(self: *Session) void {
         self.ops.stop_calls += 1;
         if (self.status == .active) {
@@ -96,6 +104,7 @@ pub const Session = struct {
         self.status = .stopped;
     }
 
+    /// Queue bytes for later apply/write.
     pub fn feed(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
         const projected_len = std.math.add(usize, self.pending.items.len, bytes.len) catch {
             self.ops.feed_rejected += 1;
@@ -110,6 +119,7 @@ pub const Session = struct {
         self.ops.bytes_fed += bytes.len;
     }
 
+    /// Apply queued bytes to transport and return bytes drained.
     pub fn apply(self: *Session) usize {
         self.ops.apply_calls += 1;
         const n = self.pending.items.len;
@@ -138,11 +148,13 @@ pub const Session = struct {
         return drained;
     }
 
+    /// Clear pending queue state.
     pub fn reset(self: *Session) void {
         self.ops.reset_calls += 1;
         self.pending.clearRetainingCapacity();
     }
 
+    /// Update tracked dimensions and propagate to transport.
     pub fn resize(self: *Session, cols: u16, rows: u16) !void {
         if (cols == 0 or rows == 0) {
             self.ops.resize_invalid_calls += 1;
@@ -160,6 +172,7 @@ pub const Session = struct {
         };
     }
 
+    /// Capture current session snapshot.
     pub fn snapshot(self: *const Session) Snapshot {
         return .{
             .cols = self.cols,
@@ -169,6 +182,7 @@ pub const Session = struct {
         };
     }
 
+    /// Restore session from validated snapshot.
     pub fn restore(self: *Session, snap: Snapshot) error{InvalidSnapshot}!void {
         if (snap.cols == 0 or snap.rows == 0) return error.InvalidSnapshot;
         self.cols = snap.cols;

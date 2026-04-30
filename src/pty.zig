@@ -20,10 +20,12 @@ const c = @cImport({
     @cInclude("signal.h");
 });
 
+/// PTY interface boundary.
 pub const Pty = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// PTY operation vtable.
     pub const VTable = struct {
         start: *const fn (ptr: *anyopaque) anyerror!void,
         stop: *const fn (ptr: *anyopaque) void,
@@ -34,29 +36,36 @@ pub const Pty = struct {
         control: *const fn (ptr: *anyopaque, signal: u8) void,
     };
 
+    /// Start PTY transport.
     pub fn start(self: Pty) anyerror!void {
         return self.vtable.start(self.ptr);
     }
+    /// Stop PTY transport.
     pub fn stop(self: Pty) void {
         self.vtable.stop(self.ptr);
     }
+    /// Write bytes into PTY.
     pub fn write(self: Pty, bytes: []const u8) anyerror!usize {
         return self.vtable.write(self.ptr, bytes);
     }
+    /// Read bytes from PTY.
     pub fn read(self: Pty, buf: []u8) anyerror!usize {
         return self.vtable.read(self.ptr, buf);
     }
+    /// Wait for PTY readability.
     pub fn waitReadable(self: Pty, timeout_ms: i32) anyerror!bool {
         return self.vtable.wait_readable(self.ptr, timeout_ms);
     }
+    /// Resize PTY dimensions.
     pub fn resize(self: Pty, cols: u16, rows: u16) anyerror!void {
         return self.vtable.resize(self.ptr, cols, rows);
     }
+    /// Send PTY control signal.
     pub fn control(self: Pty, signal: u8) void {
         self.vtable.control(self.ptr, signal);
     }
 };
-///  portability class used for host-level selection.
+/// Portability class used for host-level selection.
 pub const PtyClass = enum {
     /// POSIX PTY pty for Linux and macOS hosts.
     /// Uses fork(), openpty(), and POSIX process control (signals, ioctl).
@@ -69,6 +78,7 @@ pub const PtyClass = enum {
     conpty,
 };
 
+/// In-memory PTY implementation for tests.
 pub const Mem = struct {
     allocator: std.mem.Allocator,
     started: bool,
@@ -78,16 +88,19 @@ pub const Mem = struct {
     last_rows: u16,
     last_signal: ?u8,
 
+    /// Initialize in-memory PTY.
     pub fn init(allocator: std.mem.Allocator) Mem {
         return .{ .allocator = allocator, .started = false, .rx = .empty, .tx = .empty, .last_cols = 0, .last_rows = 0, .last_signal = null };
     }
 
+    /// Release in-memory PTY storage.
     pub fn deinit(self: *Mem) void {
         self.rx.deinit(self.allocator);
         self.tx.deinit(self.allocator);
         self.* = undefined;
     }
 
+    /// Expose generic PTY interface.
     pub fn pty(self: *Mem) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -138,21 +151,25 @@ pub const Mem = struct {
     }
 };
 
+/// Partial-write PTY implementation for tests.
 pub const Partial = struct {
     allocator: std.mem.Allocator,
     started: bool,
     max_bytes: usize,
     tx: std.ArrayListUnmanaged(u8),
 
+    /// Initialize partial-write PTY.
     pub fn init(allocator: std.mem.Allocator, max_bytes: usize) Partial {
         return .{ .allocator = allocator, .started = false, .max_bytes = max_bytes, .tx = .empty };
     }
 
+    /// Release partial-write PTY storage.
     pub fn deinit(self: *Partial) void {
         self.tx.deinit(self.allocator);
         self.* = undefined;
     }
 
+    /// Expose generic PTY interface.
     pub fn pty(self: *Partial) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -196,13 +213,17 @@ pub const Partial = struct {
     }
 };
 
+/// Always-failing PTY implementation for tests.
 pub const Fail = struct {
+    /// Initialize failing PTY.
     pub fn init() Fail {
         return .{};
     }
+    /// Deinitialize failing PTY (no-op).
     pub fn deinit(self: *Fail) void {
         _ = self;
     }
+    /// Expose generic PTY interface.
     pub fn pty(self: *Fail) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -242,6 +263,7 @@ pub const Fail = struct {
     }
 };
 
+/// Unix PTY implementation.
 pub const UnixPty = struct {
     allocator: std.mem.Allocator,
     shell_path: [:0]u8,
@@ -252,6 +274,7 @@ pub const UnixPty = struct {
     last_cols: u16,
     last_rows: u16,
 
+    /// Initialize Unix PTY runtime.
     pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !UnixPty {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos) return error.UnsupportedPlatform;
         const shell_z = try allocator.dupeZ(u8, shell_path);
@@ -261,6 +284,7 @@ pub const UnixPty = struct {
         return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
+    /// Release Unix PTY resources.
     pub fn deinit(self: *UnixPty) void {
         self.stopInternal();
         self.allocator.free(self.shell_path);
@@ -268,6 +292,7 @@ pub const UnixPty = struct {
         self.* = undefined;
     }
 
+    /// Expose generic PTY interface.
     pub fn pty(self: *UnixPty) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -362,6 +387,7 @@ pub const UnixPty = struct {
     }
 };
 
+/// Android PTY implementation.
 pub const AndroidPty = struct {
     allocator: std.mem.Allocator,
     shell_path: [:0]u8,
@@ -372,6 +398,7 @@ pub const AndroidPty = struct {
     last_cols: u16,
     last_rows: u16,
 
+    /// Initialize Android PTY runtime.
     pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !AndroidPty {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos and builtin.os.tag != .android) return error.UnsupportedPlatform;
         const shell_z = try allocator.dupeZ(u8, shell_path);
@@ -381,6 +408,7 @@ pub const AndroidPty = struct {
         return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
+    /// Release Android PTY resources.
     pub fn deinit(self: *AndroidPty) void {
         self.stopInternal();
         self.allocator.free(self.shell_path);
@@ -388,6 +416,7 @@ pub const AndroidPty = struct {
         self.* = undefined;
     }
 
+    /// Expose generic PTY interface.
     pub fn pty(self: *AndroidPty) Pty {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -530,16 +559,19 @@ fn reapChild(pid: posix.pid_t, timeout_ms: i64) void {
     }
 }
 
+/// Build-selected PTY implementation type.
 pub const PtyImpl = switch (build_options.pty_variant) {
     .unix_pty => UnixPty,
     .android_pty => AndroidPty,
 };
 
+/// Build-selected PTY class value.
 pub const pty_class = switch (build_options.pty_variant) {
     .unix_pty => PtyClass.posix_pty,
     .android_pty => PtyClass.android_pty,
 };
 
+/// Initialize build-selected PTY implementation.
 pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !PtyImpl {
     return switch (build_options.pty_variant) {
         .unix_pty => PtyImpl.init(allocator, shell_path orelse "/bin/sh", command),

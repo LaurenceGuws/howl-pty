@@ -4,29 +4,49 @@
 
 const std = @import("std");
 
+/// Session implementation module.
 pub const session = @import("session.zig");
+/// Session runtime type.
 pub const Session = session.Session;
+/// Session config type.
 pub const SessionConfig = session.Config;
+/// Session lifecycle status type.
 pub const SessionStatus = session.Status;
+/// PTY class enum.
 pub const PtyClass = session.PtyClass;
 
+/// PTY implementation module.
 pub const pty = @import("pty.zig");
+/// PTY interface type.
 pub const Pty = pty.Pty;
+/// In-memory PTY implementation.
 pub const Mem = pty.Mem;
+/// Partial-write PTY implementation.
 pub const Partial = pty.Partial;
+/// Failing PTY implementation.
 pub const Fail = pty.Fail;
+/// Android PTY implementation.
 pub const AndroidPty = pty.AndroidPty;
+/// Unix PTY implementation.
 pub const UnixPty = pty.UnixPty;
+/// Build-selected PTY implementation type.
 pub const PtyImpl = pty.PtyImpl;
+/// Build-selected PTY class value.
 pub const pty_class = pty.pty_class;
+/// PTY initializer function alias.
 pub const init_pty = pty.init;
 
-// Compatibility aliases for in-file migrated tests.
+/// Compatibility alias for in-file migrated tests.
 pub const MemPty = Mem;
+/// Compatibility alias for in-file migrated tests.
 pub const PartialPty = Partial;
+/// Compatibility alias for in-file migrated tests.
 pub const FailPty = Fail;
+/// Compatibility alias for in-file migrated tests.
 pub const AndroidPtyImpl = AndroidPty;
+/// Compatibility alias for in-file migrated tests.
 pub const UnixPtyImpl = UnixPty;
+/// Compatibility alias for in-file migrated tests.
 pub const initPty = init_pty;
 
 test "facade wiring" {
@@ -153,7 +173,7 @@ test "snapshot restore" {
     try std.testing.expectEqual(@as(u16, 30), s.rows);
 }
 
-// Responsibility: assert equality across snapshot payload fields.
+/// Assert equality across snapshot payload fields.
 pub fn expectSnapshotEqual(expected: anytype, actual: anytype) !void {
     try std.testing.expectEqual(expected.cols, actual.cols);
     try std.testing.expectEqual(expected.rows, actual.rows);
@@ -161,7 +181,7 @@ pub fn expectSnapshotEqual(expected: anytype, actual: anytype) !void {
     try std.testing.expectEqual(expected.resize_count, actual.resize_count);
 }
 
-// Responsibility: capture session operation counters for tests.
+/// Capture session operation counters for tests.
 pub const SessionOpsCheckpoint = struct {
     start_attempts: u32,
     start_successes: u32,
@@ -177,6 +197,7 @@ pub const SessionOpsCheckpoint = struct {
     resize_invalid_calls: u32,
     resize_transport_errors: u32,
 
+    /// Capture counters from session-like object.
     pub fn capture(s: anytype) SessionOpsCheckpoint {
         return .{
             .start_attempts = s.ops.start_attempts,
@@ -196,7 +217,7 @@ pub const SessionOpsCheckpoint = struct {
     }
 };
 
-// Responsibility: capture session checkpoints for tests.
+/// Capture session checkpoints for tests.
 pub const ConformanceCheckpoint = struct {
     status: SessionStatus,
     cols: u16,
@@ -204,6 +225,7 @@ pub const ConformanceCheckpoint = struct {
     resize_count: u32,
     pending_len: usize,
 
+    /// Capture checkpoint from session-like object.
     pub fn capture(s: anytype) ConformanceCheckpoint {
         return .{
             .status = s.status,
