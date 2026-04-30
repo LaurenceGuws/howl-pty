@@ -29,6 +29,7 @@ pub const Pty = struct {
         stop: *const fn (ptr: *anyopaque) void,
         write: *const fn (ptr: *anyopaque, bytes: []const u8) anyerror!usize,
         read: *const fn (ptr: *anyopaque, buf: []u8) anyerror!usize,
+        wait_readable: *const fn (ptr: *anyopaque, timeout_ms: i32) anyerror!bool,
         resize: *const fn (ptr: *anyopaque, cols: u16, rows: u16) anyerror!void,
         control: *const fn (ptr: *anyopaque, signal: u8) void,
     };
@@ -44,6 +45,9 @@ pub const Pty = struct {
     }
     pub fn read(self: Pty, buf: []u8) anyerror!usize {
         return self.vtable.read(self.ptr, buf);
+    }
+    pub fn waitReadable(self: Pty, timeout_ms: i32) anyerror!bool {
+        return self.vtable.wait_readable(self.ptr, timeout_ms);
     }
     pub fn resize(self: Pty, cols: u16, rows: u16) anyerror!void {
         return self.vtable.resize(self.ptr, cols, rows);
@@ -88,7 +92,7 @@ pub const Mem = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
 
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
@@ -115,6 +119,12 @@ pub const Mem = struct {
         std.mem.copyForwards(u8, self.rx.items[0..remaining], self.rx.items[n..]);
         self.rx.shrinkRetainingCapacity(remaining);
         return n;
+    }
+    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+        const self: *Mem = @ptrCast(@alignCast(ptr));
+        if (!self.started) return error.NotStarted;
+        _ = timeout_ms;
+        return self.rx.items.len > 0;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
@@ -147,7 +157,7 @@ pub const Partial = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
 
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *Partial = @ptrCast(@alignCast(ptr));
@@ -169,6 +179,11 @@ pub const Partial = struct {
         _ = ptr;
         _ = buf;
         return 0;
+    }
+    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+        _ = ptr;
+        _ = timeout_ms;
+        return false;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         _ = ptr;
@@ -192,7 +207,7 @@ pub const Fail = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         _ = ptr;
         return error.Failed;
@@ -208,6 +223,11 @@ pub const Fail = struct {
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
         _ = ptr;
         _ = buf;
+        return error.Failed;
+    }
+    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+        _ = ptr;
+        _ = timeout_ms;
         return error.Failed;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
@@ -286,7 +306,7 @@ pub const UnixPty = struct {
         self.started = false;
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
@@ -314,6 +334,18 @@ pub const UnixPty = struct {
             else => return err,
         };
         return n;
+    }
+    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
+        if (!self.started or self.master_fd == null) return error.NotStarted;
+        var fds = [_]posix.pollfd{.{
+            .fd = self.master_fd.?,
+            .events = posix.POLL.IN | posix.POLL.HUP,
+            .revents = 0,
+        }};
+        const ready = try posix.poll(&fds, timeout_ms);
+        if (ready <= 0) return false;
+        return (fds[0].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
@@ -394,7 +426,7 @@ pub const AndroidPty = struct {
         self.started = false;
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
@@ -422,6 +454,18 @@ pub const AndroidPty = struct {
             else => return err,
         };
         return n;
+    }
+    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
+        if (!self.started or self.master_fd == null) return error.NotStarted;
+        var fds = [_]posix.pollfd{.{
+            .fd = self.master_fd.?,
+            .events = posix.POLL.IN | posix.POLL.HUP,
+            .revents = 0,
+        }};
+        const ready = try posix.poll(&fds, timeout_ms);
+        if (ready <= 0) return false;
+        return (fds[0].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
