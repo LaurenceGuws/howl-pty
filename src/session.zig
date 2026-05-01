@@ -89,6 +89,7 @@ pub const Session = struct {
         if (self.status == .active) return error.AlreadyStarted;
         if (self.pty) |t| t.start() catch |err| {
             self.ops.start_failures += 1;
+            std.log.err("SES,event=startErr,error={s}", .{@errorName(err)});
             return err;
         };
         self.status = .active;
@@ -104,14 +105,16 @@ pub const Session = struct {
         self.status = .stopped;
     }
 
-    /// Queue bytes for later apply/write.
-    pub fn feed(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
+    /// Publish host input bytes into the pending outbound queue.
+    pub fn publishHostInput(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
         const projected_len = std.math.add(usize, self.pending.items.len, bytes.len) catch {
             self.ops.feed_rejected += 1;
+            std.log.warn("SES,event=publishInputErr,reason=queueOverflow", .{});
             return error.QueueFull;
         };
         if (projected_len > self.pending_capacity) {
             self.ops.feed_rejected += 1;
+            std.log.warn("SES,event=publishInputErr,reason=queueFull", .{});
             return error.QueueFull;
         }
         try self.pending.appendSlice(self.allocator, bytes);
@@ -119,8 +122,8 @@ pub const Session = struct {
         self.ops.bytes_fed += bytes.len;
     }
 
-    /// Apply queued bytes to transport and return bytes drained.
-    pub fn apply(self: *Session) usize {
+    /// Flush queued outbound input bytes to transport and return drained count.
+    pub fn flushOutboundInputToPty(self: *Session) usize {
         self.ops.apply_calls += 1;
         const n = self.pending.items.len;
         var drained: usize = 0;
@@ -158,6 +161,7 @@ pub const Session = struct {
     pub fn resize(self: *Session, cols: u16, rows: u16) !void {
         if (cols == 0 or rows == 0) {
             self.ops.resize_invalid_calls += 1;
+            std.log.err("SES,event=resizeErr,reason=invalidDimensions", .{});
             return error.InvalidDimensions;
         }
 
@@ -168,6 +172,7 @@ pub const Session = struct {
 
         if (self.pty) |t| t.resize(cols, rows) catch |err| {
             self.ops.resize_transport_errors += 1;
+            std.log.err("SES,event=resizeErr,error={s}", .{@errorName(err)});
             return err;
         };
     }

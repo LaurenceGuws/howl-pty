@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
     mod.addOptions("build_options", build_options);
 
     const mod_tests = b.addTest(.{ .root_module = mod });
+    mod_tests.use_llvm = true;
     const run_mod_tests = b.addRunArtifact(mod_tests);
 
     const test_step = b.step("test", "Run tests");
