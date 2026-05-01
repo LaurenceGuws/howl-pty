@@ -558,7 +558,7 @@ fn applyShellDerivedLayout(shell_path: [:0]const u8) void {
     const app_data = std.fmt.bufPrintZ(&app_data_buf, "{s}", .{app_root}) catch return;
     const prefix = std.fmt.bufPrintZ(&prefix_buf, "{s}/usr", .{app_root}) catch return;
     const home = std.fmt.bufPrintZ(&home_buf, "{s}/home", .{app_root}) catch return;
-    const tmp = std.fmt.bufPrintZ(&tmp_buf, "{s}/tmp", .{app_root}) catch return;
+    const tmp = std.fmt.bufPrintZ(&tmp_buf, "{s}/usr/tmp", .{app_root}) catch return;
     const path = std.fmt.bufPrintZ(&path_buf, "{s}/usr/bin:/system/bin", .{app_root}) catch return;
 
     _ = c.setenv("APP_DATA_DIR", app_data.ptr, 1);
