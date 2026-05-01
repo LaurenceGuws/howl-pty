@@ -527,6 +527,7 @@ fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:0]co
 
     _ = c.setenv("TERM", "xterm-256color", 1);
     _ = c.setenv("PS1", "howl$ ", 1);
+    applyShellDerivedLayout(shell_path);
 
     if (command) |cmd| {
         const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-lc", cmd.ptr };
@@ -539,6 +540,34 @@ fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:0]co
     const envp: [*:null]const ?[*:0]const u8 = @ptrCast(@constCast(std.c.environ));
     _ = posix.execvpeZ(shell_path.ptr, &argv, envp) catch {};
     posix.exit(127);
+}
+
+fn applyShellDerivedLayout(shell_path: [:0]const u8) void {
+    const shell = shell_path[0..shell_path.len];
+    const marker = "/usr/bin/";
+    const usr_idx = std.mem.indexOf(u8, shell, marker) orelse return;
+    if (usr_idx == 0) return;
+    const app_root = shell[0..usr_idx];
+
+    var app_data_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var prefix_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var home_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var tmp_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+    const app_data = std.fmt.bufPrintZ(&app_data_buf, "{s}", .{app_root}) catch return;
+    const prefix = std.fmt.bufPrintZ(&prefix_buf, "{s}/usr", .{app_root}) catch return;
+    const home = std.fmt.bufPrintZ(&home_buf, "{s}/home", .{app_root}) catch return;
+    const tmp = std.fmt.bufPrintZ(&tmp_buf, "{s}/tmp", .{app_root}) catch return;
+    const path = std.fmt.bufPrintZ(&path_buf, "{s}/usr/bin:/system/bin", .{app_root}) catch return;
+
+    _ = c.setenv("APP_DATA_DIR", app_data.ptr, 1);
+    _ = c.setenv("PREFIX", prefix.ptr, 1);
+    _ = c.setenv("HOME", home.ptr, 1);
+    _ = c.setenv("TMPDIR", tmp.ptr, 1);
+    _ = c.setenv("PATH", path.ptr, 1);
+
+    _ = c.chdir(home.ptr);
 }
 
 fn sendSignal(pid: posix.pid_t, sig: u8) void {
