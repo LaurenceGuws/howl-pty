@@ -5,33 +5,49 @@
 const std = @import("std");
 const pty_api = @import("pty.zig");
 
-pub const PtyClass = pty_api.PtyClass;
-pub const Pty = pty_api.Pty;
+/// Session module public object surface.
+pub const SessionApi = struct {
+    pub const PtyClass = SessionPtyClass;
+    pub const Pty = SessionPty;
+    pub const Config = SessionConfig;
+    pub const Status = SessionStatus;
+    pub const Snapshot = SessionSnapshot;
+    pub const Ops = SessionOps;
+    pub const Session = SessionType;
+};
+
+const PtyClass = pty_api.PtyApi.PtyClass;
+const Pty = pty_api.PtyApi.Pty;
+const SessionPtyClass = PtyClass;
+const SessionPty = Pty;
 
 /// Session initialization config.
-pub const Config = struct {
+const Config = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
     pending_capacity: usize,
     pty: ?Pty = null,
 };
+const SessionConfig = Config;
 /// Session lifecycle status.
-pub const Status = enum {
+const Status = enum {
     idle,
     active,
     stopped,
 };
+const SessionStatus = Status;
 /// Serializable session snapshot.
-pub const Snapshot = struct {
+const Snapshot = struct {
     cols: u16,
     rows: u16,
     status: Status,
     resize_count: u32,
 };
+const SessionSnapshot = Snapshot;
 
 /// Operation counters for conformance/testing.
-pub const Ops = struct {
+const Ops = struct {
     start_attempts: u32,
     start_successes: u32,
     start_failures: u32,
@@ -47,9 +63,10 @@ pub const Ops = struct {
     resize_invalid_calls: u32,
     resize_transport_errors: u32,
 };
+const SessionOps = Ops;
 
 /// Session queue/lifecycle orchestrator.
-pub const Session = struct {
+const Session = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
@@ -107,14 +124,13 @@ pub const Session = struct {
 
     /// Publish host input bytes into the pending outbound queue.
     pub fn publishHostInput(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
+        if (bytes.len == 0) return;
         const projected_len = std.math.add(usize, self.pending.items.len, bytes.len) catch {
             self.ops.feed_rejected += 1;
-            std.log.warn("SES,event=publishInputErr,reason=queueOverflow", .{});
             return error.QueueFull;
         };
         if (projected_len > self.pending_capacity) {
             self.ops.feed_rejected += 1;
-            std.log.warn("SES,event=publishInputErr,reason=queueFull", .{});
             return error.QueueFull;
         }
         try self.pending.appendSlice(self.allocator, bytes);
@@ -123,7 +139,8 @@ pub const Session = struct {
     }
 
     /// Flush queued outbound input bytes to transport and return drained count.
-    pub fn flushOutboundInputToPty(self: *Session) usize {
+    /// This call is non-throwing: transport write failures are reflected in `ops`.
+    pub fn flushOutboundInput(self: *Session) usize {
         self.ops.apply_calls += 1;
         const n = self.pending.items.len;
         var drained: usize = 0;
@@ -151,6 +168,31 @@ pub const Session = struct {
         return drained;
     }
 
+    /// Wait for transport readability.
+    pub fn waitReadable(self: *Session, timeout_ms: i32) bool {
+        if (self.pty) |t| {
+            return t.waitReadable(timeout_ms) catch false;
+        }
+        return false;
+    }
+
+    /// Read transport bytes into caller buffer.
+    pub fn readTransport(self: *Session, buf: []u8) usize {
+        if (self.pty) |t| {
+            return t.read(buf) catch |err| switch (err) {
+                error.NotStarted => 0,
+                else => 0,
+            };
+        }
+        return 0;
+    }
+
+    /// Send control signal to transport child process.
+    pub fn publishControlSignal(self: *Session, signal: u8) error{TransportUnavailable}!void {
+        const t = self.pty orelse return error.TransportUnavailable;
+        t.control(signal);
+    }
+
     /// Clear pending queue state.
     pub fn reset(self: *Session) void {
         self.ops.reset_calls += 1;
@@ -161,7 +203,6 @@ pub const Session = struct {
     pub fn resize(self: *Session, cols: u16, rows: u16) !void {
         if (cols == 0 or rows == 0) {
             self.ops.resize_invalid_calls += 1;
-            std.log.err("SES,event=resizeErr,reason=invalidDimensions", .{});
             return error.InvalidDimensions;
         }
 
@@ -172,7 +213,6 @@ pub const Session = struct {
 
         if (self.pty) |t| t.resize(cols, rows) catch |err| {
             self.ops.resize_transport_errors += 1;
-            std.log.err("SES,event=resizeErr,error={s}", .{@errorName(err)});
             return err;
         };
     }
@@ -188,6 +228,7 @@ pub const Session = struct {
     }
 
     /// Restore session from validated snapshot.
+    /// An `active` snapshot is intentionally normalized to `stopped`.
     pub fn restore(self: *Session, snap: Snapshot) error{InvalidSnapshot}!void {
         if (snap.cols == 0 or snap.rows == 0) return error.InvalidSnapshot;
         self.cols = snap.cols;
@@ -197,3 +238,4 @@ pub const Session = struct {
         self.pending.clearRetainingCapacity();
     }
 };
+const SessionType = Session;

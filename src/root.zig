@@ -4,32 +4,34 @@
 
 const session_mod = @import("session.zig");
 const pty_mod = @import("pty.zig");
+const SessionApi = session_mod.SessionApi;
+const PtyApi = pty_mod.PtyApi;
 
 /// Canonical howl-session package object.
 pub const HowlSession = struct {
     /// Session runtime facade.
-    pub const Session = session_mod.Session;
+    pub const Session = SessionApi.Session;
     /// Session config payload.
-    pub const SessionConfig = session_mod.Config;
+    pub const SessionConfig = SessionApi.Config;
     /// Session lifecycle state enum.
-    pub const SessionStatus = session_mod.Status;
+    pub const SessionStatus = SessionApi.Status;
 
     /// PTY transport interface.
-    pub const Pty = pty_mod.Pty;
+    pub const Pty = PtyApi.Pty;
     /// Build-selected PTY implementation.
-    pub const PtyImpl = pty_mod.PtyImpl;
+    pub const PtyImpl = PtyApi.PtyImpl;
     /// Build-selected PTY class value.
-    pub const pty_class = pty_mod.pty_class;
+    pub const pty_class = PtyApi.pty_class;
 
     /// Test/dummy PTY variants.
-    pub const MemPty = pty_mod.Mem;
-    pub const PartialPty = pty_mod.Partial;
-    pub const FailPty = pty_mod.Fail;
-    pub const AndroidPty = pty_mod.AndroidPty;
-    pub const UnixPty = pty_mod.UnixPty;
+    pub const MemPty = PtyApi.Mem;
+    pub const PartialPty = PtyApi.Partial;
+    pub const FailPty = PtyApi.Fail;
+    pub const AndroidPty = PtyApi.AndroidPty;
+    pub const UnixPty = PtyApi.UnixPty;
 
     /// Create build-selected PTY transport.
     pub fn initPty(allocator: @import("std").mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !PtyImpl {
-        return pty_mod.init(allocator, shell_path, command);
+        return PtyApi.initPty(allocator, shell_path, command);
     }
 };
