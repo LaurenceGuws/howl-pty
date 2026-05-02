@@ -187,6 +187,14 @@ const Session = struct {
         return 0;
     }
 
+    /// Read one transport chunk and deliver it to sink.
+    pub fn ingestTransport(self: *Session, scratch: []u8, sink: anytype) usize {
+        const n = self.readTransport(scratch);
+        if (n == 0) return 0;
+        sink.onTransportBytes(scratch[0..n]);
+        return n;
+    }
+
     /// Send control signal to transport child process.
     pub fn publishControlSignal(self: *Session, signal: u8) error{TransportUnavailable}!void {
         const t = self.pty orelse return error.TransportUnavailable;
