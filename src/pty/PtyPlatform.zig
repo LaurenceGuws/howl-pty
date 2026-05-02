@@ -13,6 +13,7 @@ pub const c = @cImport({
         @cInclude("pty.h");
     }
     @cInclude("signal.h");
+    @cInclude("sys/wait.h");
 });
 
 /// PTY interface boundary.
@@ -46,18 +47,19 @@ pub const PtyClass = enum {
 };
 
 pub fn setNonBlocking(fd: posix.fd_t) !void {
-    const flags = posix.fcntl(fd, posix.F.GETFL, 0) catch return error.OpenPtyFailed;
-    _ = posix.fcntl(fd, posix.F.SETFL, @as(u32, @intCast(flags)) | c.O_NONBLOCK) catch return error.OpenPtyFailed;
+    const flags = c.fcntl(fd, c.F_GETFL, @as(c_int, 0));
+    if (flags < 0) return error.OpenPtyFailed;
+    if (c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) return error.OpenPtyFailed;
 }
 
 pub fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:0]const u8) !void {
-    _ = posix.setsid() catch {};
+    _ = c.setsid();
     _ = c.ioctl(@intCast(slave_fd), c.TIOCSCTTY, @as(c_ulong, 0));
 
-    try posix.dup2(slave_fd, 0);
-    try posix.dup2(slave_fd, 1);
-    try posix.dup2(slave_fd, 2);
-    if (slave_fd > 2) posix.close(slave_fd);
+    if (c.dup2(slave_fd, 0) < 0) return error.OpenPtyFailed;
+    if (c.dup2(slave_fd, 1) < 0) return error.OpenPtyFailed;
+    if (c.dup2(slave_fd, 2) < 0) return error.OpenPtyFailed;
+    if (slave_fd > 2) _ = c.close(slave_fd);
 
     _ = c.setenv("TERM", "xterm-256color", 1);
     _ = c.setenv("PS1", "howl$ ", 1);
@@ -66,14 +68,14 @@ pub fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:
     if (command) |cmd| {
         const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-lc", cmd.ptr };
         const envp: [*:null]const ?[*:0]const u8 = @ptrCast(@constCast(std.c.environ));
-        _ = posix.execvpeZ(shell_path.ptr, &argv, envp) catch {};
-        posix.exit(127);
+        _ = c.execve(shell_path.ptr, @ptrCast(&argv), @ptrCast(envp));
+        c._exit(127);
     }
 
     const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-i" };
     const envp: [*:null]const ?[*:0]const u8 = @ptrCast(@constCast(std.c.environ));
-    _ = posix.execvpeZ(shell_path.ptr, &argv, envp) catch {};
-    posix.exit(127);
+    _ = c.execve(shell_path.ptr, @ptrCast(&argv), @ptrCast(envp));
+    c._exit(127);
 }
 
 fn applyShellDerivedLayout(shell_path: [:0]const u8) void {
@@ -105,19 +107,29 @@ fn applyShellDerivedLayout(shell_path: [:0]const u8) void {
 }
 
 pub fn sendSignal(pid: posix.pid_t, sig: u8) void {
-    posix.kill(pid, sig) catch {};
+    const signal: posix.SIG = switch (sig) {
+        1 => .HUP,
+        2 => .INT,
+        15 => .TERM,
+        9 => .KILL,
+        else => return,
+    };
+    posix.kill(pid, signal) catch {};
 }
 
 pub fn reapChild(pid: posix.pid_t, timeout_ms: i64) void {
-    const start_ms = std.time.milliTimestamp();
+    const max_wait_ticks: i64 = @max(1, @divTrunc(timeout_ms, 2));
+    var waited_ticks: i64 = 0;
     while (true) {
-        const res = posix.waitpid(pid, posix.W.NOHANG);
-        if (res.pid != 0) return;
-        if (std.time.milliTimestamp() - start_ms > timeout_ms) {
-            sendSignal(pid, @intCast(posix.SIG.KILL));
-            _ = posix.waitpid(pid, 0);
+        var status: c_int = 0;
+        const res = c.waitpid(pid, &status, c.WNOHANG);
+        if (res == pid) return;
+        if (waited_ticks >= max_wait_ticks) {
+            sendSignal(pid, @intFromEnum(posix.SIG.KILL));
+            _ = c.waitpid(pid, &status, 0);
             return;
         }
-        std.Thread.sleep(2 * std.time.ns_per_ms);
+        _ = c.usleep(2000);
+        waited_ticks += 1;
     }
 }
