@@ -93,18 +93,23 @@ fn applyShellDerivedLayout(shell_path: [:0]const u8) void {
     var home_buf: [std.fs.max_path_bytes]u8 = undefined;
     var tmp_buf: [std.fs.max_path_bytes]u8 = undefined;
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var ld_library_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
     const app_data = std.fmt.bufPrintZ(&app_data_buf, "{s}", .{app_root}) catch return;
     const prefix = std.fmt.bufPrintZ(&prefix_buf, "{s}/usr", .{app_root}) catch return;
     const home = std.fmt.bufPrintZ(&home_buf, "{s}/home", .{app_root}) catch return;
     const tmp = std.fmt.bufPrintZ(&tmp_buf, "{s}/usr/tmp", .{app_root}) catch return;
     const path = std.fmt.bufPrintZ(&path_buf, "{s}/usr/bin:/system/bin", .{app_root}) catch return;
+    const ld_library_path = std.fmt.bufPrintZ(&ld_library_path_buf, "{s}/usr/lib", .{app_root}) catch return;
 
     _ = c.setenv("APP_DATA_DIR", app_data.ptr, 1);
     _ = c.setenv("PREFIX", prefix.ptr, 1);
     _ = c.setenv("HOME", home.ptr, 1);
     _ = c.setenv("TMPDIR", tmp.ptr, 1);
     _ = c.setenv("PATH", path.ptr, 1);
+    _ = c.setenv("LD_LIBRARY_PATH", ld_library_path.ptr, 1);
+    _ = c.setenv("HOWL_PM_HOST_PLATFORM", "android", 1);
+    _ = c.setenv("SHELL", shell_path.ptr, 1);
 
     _ = c.chdir(home.ptr);
 }

@@ -147,9 +147,13 @@ const Session = struct {
 
         if (n > 0) {
             if (self.pty) |t| {
-                const written = t.write(self.pending.items) catch {
-                    self.ops.apply_transport_write_errors += 1;
-                    return 0;
+                const written = t.write(self.pending.items) catch |err| switch (err) {
+                    error.WouldBlock, error.Interrupted => 0,
+                    else => {
+                        self.ops.apply_transport_write_errors += 1;
+                        self.status = .stopped;
+                        return 0;
+                    },
                 };
                 drained = written;
                 if (written < n) {
@@ -171,7 +175,13 @@ const Session = struct {
     /// Wait for transport readability.
     pub fn waitReadable(self: *Session, timeout_ms: i32) bool {
         if (self.pty) |t| {
-            return t.waitReadable(timeout_ms) catch false;
+            return t.waitReadable(timeout_ms) catch |err| switch (err) {
+                error.WouldBlock, error.Interrupted => false,
+                else => {
+                    self.status = .stopped;
+                    return false;
+                },
+            };
         }
         return false;
     }
@@ -180,8 +190,15 @@ const Session = struct {
     pub fn readTransport(self: *Session, buf: []u8) usize {
         if (self.pty) |t| {
             return t.read(buf) catch |err| switch (err) {
-                error.NotStarted => 0,
-                else => 0,
+                error.WouldBlock, error.Interrupted => 0,
+                error.NotStarted => blk: {
+                    self.status = .stopped;
+                    break :blk 0;
+                },
+                else => blk: {
+                    self.status = .stopped;
+                    break :blk 0;
+                },
             };
         }
         return 0;

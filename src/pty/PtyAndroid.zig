@@ -82,31 +82,63 @@ pub const AndroidPty = struct {
         self.started = false;
     }
 
+    fn refreshChildState(self: *AndroidPty) void {
+        if (!self.started) return;
+        const pid = self.child_pid orelse return;
+        var status: c_int = 0;
+        const res = c.waitpid(pid, &status, c.WNOHANG);
+        if (res == pid) {
+            if (self.master_fd) |fd| _ = c.close(@intCast(fd));
+            self.master_fd = null;
+            self.child_pid = null;
+            self.started = false;
+        }
+    }
+
     const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void { const self: *AndroidPty = @ptrCast(@alignCast(ptr)); try self.startInternal(); }
     fn stopImpl(ptr: *anyopaque) void { const self: *AndroidPty = @ptrCast(@alignCast(ptr)); self.stopInternal(); }
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
+        self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (bytes.len == 0) return 0;
         const n = c.write(self.master_fd.?, bytes.ptr, bytes.len);
-        if (n < 0) return 0;
+        if (n < 0) {
+            return switch (posix.errno(n)) {
+                .AGAIN => error.WouldBlock,
+                .INTR => error.Interrupted,
+                else => error.WriteFailed,
+            };
+        }
         return @intCast(n);
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
+        self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (buf.len == 0) return 0;
         const n = c.read(self.master_fd.?, buf.ptr, buf.len);
-        if (n < 0) return 0;
+        if (n < 0) {
+            return switch (posix.errno(n)) {
+                .AGAIN => error.WouldBlock,
+                .INTR => error.Interrupted,
+                else => error.ReadFailed,
+            };
+        }
         return @intCast(n);
     }
     fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
+        self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var fds = [_]posix.pollfd{.{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 }};
         const ready = try posix.poll(&fds, timeout_ms);
         if (ready <= 0) return false;
+        if ((fds[0].revents & posix.POLL.HUP) != 0) {
+            self.refreshChildState();
+            if (!self.started) return error.NotStarted;
+        }
         return (fds[0].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
