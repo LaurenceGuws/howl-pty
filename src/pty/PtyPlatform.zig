@@ -3,10 +3,13 @@ const builtin = @import("builtin");
 const posix = std.posix;
 
 pub const c = @cImport({
+    @cDefine("_Nonnull", "");
+    @cDefine("_Nullable", "");
+    @cDefine("_Null_unspecified", "");
+    @cDefine("BIONIC_IOCTL_NO_SIGNEDNESS_OVERLOAD", "1");
     @cInclude("unistd.h");
     @cInclude("fcntl.h");
     @cInclude("stdlib.h");
-    @cInclude("sys/ioctl.h");
     if (builtin.os.tag == .macos) {
         @cInclude("util.h");
     } else {

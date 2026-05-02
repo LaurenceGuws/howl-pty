@@ -4,6 +4,9 @@ const posix = std.posix;
 const Pty = @import("PtyPlatform.zig").Pty;
 const common = @import("PtyPlatform.zig");
 const c = common.c;
+extern "c" fn grantpt(fd: c_int) c_int;
+extern "c" fn unlockpt(fd: c_int) c_int;
+extern "c" fn ptsname_r(fd: c_int, buf: [*]u8, buflen: usize) c_int;
 
 pub const AndroidPty = struct {
     allocator: std.mem.Allocator,
@@ -35,21 +38,33 @@ pub const AndroidPty = struct {
 
     fn startInternal(self: *AndroidPty) anyerror!void {
         if (self.started) return error.AlreadyStarted;
-        var master_fd: c_int = -1;
+        const master_fd = c.open("/dev/ptmx", c.O_RDWR, @as(c_int, 0));
+        if (master_fd < 0) return error.OpenPtyFailed;
         var slave_fd: c_int = -1;
-        var winsize = c.struct_winsize{ .ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0 };
-        if (c.openpty(&master_fd, &slave_fd, null, null, &winsize) != 0) return error.OpenPtyFailed;
         errdefer {
-            if (master_fd >= 0) posix.close(@intCast(master_fd));
-            if (slave_fd >= 0) posix.close(@intCast(slave_fd));
+            if (master_fd >= 0) _ = c.close(master_fd);
+            if (slave_fd >= 0) _ = c.close(slave_fd);
         }
+        if (grantpt(master_fd) != 0) return error.OpenPtyFailed;
+        if (unlockpt(master_fd) != 0) return error.OpenPtyFailed;
+        var slave_path_buf: [4096]u8 = undefined;
+        if (ptsname_r(master_fd, &slave_path_buf, slave_path_buf.len) != 0) return error.OpenPtyFailed;
+        const slave_path = std.mem.sliceTo(&slave_path_buf, 0);
+        var slave_path_z: [4096:0]u8 = undefined;
+        if (slave_path.len + 1 > slave_path_z.len) return error.OpenPtyFailed;
+        @memcpy(slave_path_z[0..slave_path.len], slave_path);
+        slave_path_z[slave_path.len] = 0;
+        slave_fd = c.open(&slave_path_z, c.O_RDWR, @as(c_int, 0));
+        if (slave_fd < 0) return error.OpenPtyFailed;
+
         try common.setNonBlocking(@intCast(master_fd));
-        const pid = try posix.fork();
+        const pid = c.fork();
+        if (pid < 0) return error.OpenPtyFailed;
         if (pid == 0) {
-            common.childProcess(@intCast(slave_fd), self.shell_path, self.command) catch posix.exit(127);
+            common.childProcess(@intCast(slave_fd), self.shell_path, self.command) catch c._exit(127);
             unreachable;
         }
-        posix.close(@intCast(slave_fd));
+        _ = c.close(slave_fd);
         self.master_fd = @intCast(master_fd);
         self.child_pid = pid;
         self.started = true;
@@ -58,10 +73,10 @@ pub const AndroidPty = struct {
     fn stopInternal(self: *AndroidPty) void {
         if (!self.started) return;
         if (self.child_pid) |pid| {
-            common.sendSignal(pid, @intCast(posix.SIG.TERM));
+            common.sendSignal(pid, @intFromEnum(posix.SIG.TERM));
             common.reapChild(pid, 30);
         }
-        if (self.master_fd) |fd| posix.close(fd);
+        if (self.master_fd) |fd| _ = c.close(@intCast(fd));
         self.child_pid = null;
         self.master_fd = null;
         self.started = false;
@@ -74,15 +89,17 @@ pub const AndroidPty = struct {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (bytes.len == 0) return 0;
-        const n = posix.write(self.master_fd.?, bytes) catch |err| switch (err) { error.WouldBlock => return 0, else => return err };
-        return n;
+        const n = c.write(self.master_fd.?, bytes.ptr, bytes.len);
+        if (n < 0) return 0;
+        return @intCast(n);
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (buf.len == 0) return 0;
-        const n = posix.read(self.master_fd.?, buf) catch |err| switch (err) { error.WouldBlock, error.InputOutput => return 0, else => return err };
-        return n;
+        const n = c.read(self.master_fd.?, buf.ptr, buf.len);
+        if (n < 0) return 0;
+        return @intCast(n);
     }
     fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
