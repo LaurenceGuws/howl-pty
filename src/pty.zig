@@ -30,26 +30,32 @@ fn initPtyImpl(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?
 const SelectedPtyImpl = PtyImpl;
 const SelectedPtyClass = pty_class;
 
+/// Build-selected PTY owner that keeps the concrete transport behind a boring surface.
 const OwnedPtyType = struct {
     impl: SelectedPtyImpl,
 
+    /// Construct the build-selected PTY owner.
     pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
         return .{ .impl = try initPtyImpl(allocator, shell_path, command) };
     }
 
+    /// Release the owned PTY transport.
     pub fn deinit(self: *OwnedPtyType) void {
         self.impl.deinit();
     }
 
+    /// Expose the session-facing PTY transport interface.
     pub fn pty(self: *OwnedPtyType) platform.Pty {
         return self.impl.pty();
     }
 
+    /// Report the build-selected PTY class.
     pub fn class(_: OwnedPtyType) platform.PtyClass {
         return SelectedPtyClass;
     }
 };
 
+/// PTY facade surface for hosts and tests.
 pub const PtyApi = struct {
     pub const Pty = platform.Pty;
     pub const PtyClass = platform.PtyClass;
@@ -64,9 +70,10 @@ pub const PtyApi = struct {
     pub const UnixPty = unix.UnixPty;
     pub const AndroidPty = android.AndroidPty;
 
-    // build-selected transport owner
+    /// Build-selected PTY class value.
     pub const pty_class = SelectedPtyClass;
 
+    /// Construct the build-selected PTY owner.
     pub fn initPty(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
         return OwnedPtyType.init(allocator, shell_path, command);
     }
