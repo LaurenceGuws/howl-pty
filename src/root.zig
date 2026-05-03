@@ -1,4 +1,4 @@
-//! Responsibility: export the howl-session object surface.
+//! Responsibility: export the howl-session owner surface.
 //! Ownership: package boundary for session/pty orchestration.
 //! Reason: keep exports boring, stable, and object-first.
 
@@ -7,7 +7,7 @@ const pty_mod = @import("pty.zig");
 const SessionApi = session_mod.SessionApi;
 const PtyApi = pty_mod.PtyApi;
 
-/// Canonical howl-session package object.
+/// Canonical howl-session package owner.
 pub const HowlSession = struct {
     /// Session runtime facade.
     pub const Session = SessionApi.Session;

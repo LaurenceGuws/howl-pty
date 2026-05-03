@@ -5,7 +5,7 @@
 const std = @import("std");
 const pty_api = @import("pty.zig");
 
-/// Session module public object surface.
+/// Canonical session owner surface.
 pub const SessionApi = struct {
     pub const PtyClass = SessionPtyClass;
     pub const Pty = SessionPty;
