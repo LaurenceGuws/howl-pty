@@ -30,9 +30,30 @@ fn initPtyImpl(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?
 const SelectedPtyImpl = PtyImpl;
 const SelectedPtyClass = pty_class;
 
+const OwnedPtyType = struct {
+    impl: SelectedPtyImpl,
+
+    pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
+        return .{ .impl = try initPtyImpl(allocator, shell_path, command) };
+    }
+
+    pub fn deinit(self: *OwnedPtyType) void {
+        self.impl.deinit();
+    }
+
+    pub fn pty(self: *OwnedPtyType) platform.Pty {
+        return self.impl.pty();
+    }
+
+    pub fn class(_: OwnedPtyType) platform.PtyClass {
+        return SelectedPtyClass;
+    }
+};
+
 pub const PtyApi = struct {
     pub const Pty = platform.Pty;
     pub const PtyClass = platform.PtyClass;
+    pub const OwnedPty = OwnedPtyType;
 
     // test variants
     pub const Mem = doubles.Mem;
@@ -43,11 +64,10 @@ pub const PtyApi = struct {
     pub const UnixPty = unix.UnixPty;
     pub const AndroidPty = android.AndroidPty;
 
-    // build-selected transport
-    pub const PtyImpl = SelectedPtyImpl;
+    // build-selected transport owner
     pub const pty_class = SelectedPtyClass;
 
-    pub fn initPty(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !SelectedPtyImpl {
-        return initPtyImpl(allocator, shell_path, command);
+    pub fn initPty(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
+        return OwnedPtyType.init(allocator, shell_path, command);
     }
 };

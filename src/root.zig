@@ -24,8 +24,8 @@ pub const HowlSession = struct {
     pub const Pty = PtyApi.Pty;
     /// PTY implementation class enum.
     pub const PtyClass = PtyApi.PtyClass;
-    /// Build-selected PTY implementation.
-    pub const PtyImpl = PtyApi.PtyImpl;
+    /// Build-selected PTY owner.
+    pub const OwnedPty = PtyApi.OwnedPty;
     /// Build-selected PTY class value.
     pub const pty_class = PtyApi.pty_class;
 
@@ -37,7 +37,7 @@ pub const HowlSession = struct {
     pub const UnixPty = PtyApi.UnixPty;
 
     /// Create build-selected PTY transport.
-    pub fn initPty(allocator: @import("std").mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !PtyImpl {
+    pub fn initPty(allocator: @import("std").mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPty {
         return PtyApi.initPty(allocator, shell_path, command);
     }
 };
