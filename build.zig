@@ -27,11 +27,23 @@ pub fn build(b: *std.Build) void {
     const build_options = b.addOptions();
     build_options.addOption(PtyVariant, "pty_variant", selected_variant);
     mod.addOptions("build_options", build_options);
+    mod.addImport("howl_session", mod);
 
-    const mod_tests = b.addTest(.{ .root_module = mod });
+    const mod_tests = b.addTest(.{
+        .name = "test-unit",
+        .root_module = mod,
+        .filters = b.args orelse &.{},
+    });
     mod_tests.use_llvm = true;
     const run_mod_tests = b.addRunArtifact(mod_tests);
+    if (b.args != null) {
+        run_mod_tests.has_side_effects = true;
+    }
 
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_mod_tests.step);
+    const test_step = b.step("test", "Run all tests");
+    const test_unit_step = b.step("test:unit", "Run unit tests");
+    const test_unit_build_step = b.step("test:unit:build", "Build unit tests");
+    test_unit_build_step.dependOn(&b.addInstallArtifact(mod_tests, .{}).step);
+    test_unit_step.dependOn(&run_mod_tests.step);
+    test_step.dependOn(test_unit_step);
 }

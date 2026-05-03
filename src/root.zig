@@ -15,9 +15,15 @@ pub const HowlSession = struct {
     pub const SessionConfig = SessionApi.Config;
     /// Session lifecycle state enum.
     pub const SessionStatus = SessionApi.Status;
+    /// Serializable session snapshot payload.
+    pub const SessionSnapshot = SessionApi.Snapshot;
+    /// Session operation counters for deterministic assertions.
+    pub const SessionOps = SessionApi.Ops;
 
     /// PTY transport interface.
     pub const Pty = PtyApi.Pty;
+    /// PTY implementation class enum.
+    pub const PtyClass = PtyApi.PtyClass;
     /// Build-selected PTY implementation.
     pub const PtyImpl = PtyApi.PtyImpl;
     /// Build-selected PTY class value.
@@ -35,3 +41,7 @@ pub const HowlSession = struct {
         return PtyApi.initPty(allocator, shell_path, command);
     }
 };
+
+test {
+    _ = @import("test/session.zig");
+}
