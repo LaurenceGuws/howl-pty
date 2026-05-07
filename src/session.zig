@@ -168,6 +168,11 @@ pub const Session = struct {
         return drained;
     }
 
+    /// Report whether host input still waits for transport write capacity.
+    pub fn hasPendingOutboundInput(self: *const Session) bool {
+        return self.pending.items.len > 0;
+    }
+
     /// Wait for transport readability.
     pub fn waitReadable(self: *Session, timeout_ms: i32) bool {
         if (self.pty) |t| {
