@@ -4,8 +4,8 @@
 
 const session_mod = @import("session.zig");
 const pty_mod = @import("pty.zig");
-const SessionApi = session_mod.SessionApi;
-const PtyApi = pty_mod.PtyApi;
+const SessionApi = session_mod;
+const PtyApi = pty_mod;
 
 /// Session runtime facade.
 pub const Session = SessionApi.Session;

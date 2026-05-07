@@ -6,51 +6,33 @@ const std = @import("std");
 const pty_api = @import("pty.zig");
 
 /// Canonical session owner surface.
-pub const SessionApi = struct {
-    pub const PtyClass = SessionPtyClass;
-    pub const Pty = SessionPty;
-    pub const ControlSignal = SessionControlSignal;
-    pub const Config = SessionConfig;
-    pub const Status = SessionStatus;
-    pub const Snapshot = SessionSnapshot;
-    pub const Ops = SessionOps;
-    pub const Session = SessionType;
-};
-
-const PtyClass = pty_api.PtyApi.PtyClass;
-const Pty = pty_api.PtyApi.Pty;
-const ControlSignal = pty_api.PtyApi.ControlSignal;
-const SessionPtyClass = PtyClass;
-const SessionPty = Pty;
-const SessionControlSignal = ControlSignal;
-
+pub const PtyClass = pty_api.PtyClass;
+pub const Pty = pty_api.Pty;
+pub const ControlSignal = pty_api.ControlSignal;
 /// Session initialization config.
-const Config = struct {
+pub const Config = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
     pending_capacity: usize,
     pty: ?Pty = null,
 };
-const SessionConfig = Config;
 /// Session lifecycle status.
-const Status = enum {
+pub const Status = enum {
     idle,
     active,
     stopped,
 };
-const SessionStatus = Status;
 /// Serializable session snapshot.
-const Snapshot = struct {
+pub const Snapshot = struct {
     cols: u16,
     rows: u16,
     status: Status,
     resize_count: u32,
 };
-const SessionSnapshot = Snapshot;
 
 /// Operation counters for conformance/testing.
-const Ops = struct {
+pub const Ops = struct {
     start_attempts: u32,
     start_successes: u32,
     start_failures: u32,
@@ -66,10 +48,9 @@ const Ops = struct {
     resize_invalid_calls: u32,
     resize_transport_errors: u32,
 };
-const SessionOps = Ops;
 
 /// Session queue/lifecycle orchestrator.
-const Session = struct {
+pub const Session = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
@@ -278,4 +259,3 @@ const Session = struct {
         self.pending.clearRetainingCapacity();
     }
 };
-const SessionType = Session;

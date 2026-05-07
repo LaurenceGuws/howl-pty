@@ -15,7 +15,7 @@ const PtyImpl = switch (build_options.pty_variant) {
     .android_pty => android.AndroidPty,
 };
 
-const pty_class = switch (build_options.pty_variant) {
+const selected_pty_class = switch (build_options.pty_variant) {
     .unix_pty => platform.PtyClass.posix_pty,
     .android_pty => platform.PtyClass.android_pty,
 };
@@ -28,7 +28,7 @@ fn initPtyImpl(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?
 }
 
 const SelectedPtyImpl = PtyImpl;
-const SelectedPtyClass = pty_class;
+const SelectedPtyClass = selected_pty_class;
 
 /// Build-selected PTY owner that keeps the concrete transport behind a boring surface.
 const OwnedPtyType = struct {
@@ -56,22 +56,20 @@ const OwnedPtyType = struct {
 };
 
 /// PTY facade surface for hosts and tests.
-pub const PtyApi = struct {
-    pub const Pty = platform.Pty;
-    pub const PtyClass = platform.PtyClass;
-    pub const ControlSignal = platform.ControlSignal;
-    pub const OwnedPty = OwnedPtyType;
+pub const Pty = platform.Pty;
+pub const PtyClass = platform.PtyClass;
+pub const ControlSignal = platform.ControlSignal;
+pub const OwnedPty = OwnedPtyType;
 
-    // test variants
-    pub const Mem = doubles.Mem;
-    pub const Partial = doubles.Partial;
-    pub const Fail = doubles.Fail;
+// test variants
+pub const Mem = doubles.Mem;
+pub const Partial = doubles.Partial;
+pub const Fail = doubles.Fail;
 
-    /// Build-selected PTY class value.
-    pub const pty_class = SelectedPtyClass;
+/// Build-selected PTY class value.
+pub const pty_class = SelectedPtyClass;
 
-    /// Construct the build-selected PTY owner.
-    pub fn initPty(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
-        return OwnedPtyType.init(allocator, shell_path, command);
-    }
-};
+/// Construct the build-selected PTY owner.
+pub fn initPty(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
+    return OwnedPtyType.init(allocator, shell_path, command);
+}
