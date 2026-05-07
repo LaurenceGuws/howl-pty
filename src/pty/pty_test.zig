@@ -1,6 +1,6 @@
 const std = @import("std");
-const Pty = @import("PtyPlatform.zig").Pty;
-const ControlSignal = @import("PtyPlatform.zig").ControlSignal;
+const Pty = @import("pty_platform.zig").Pty;
+const ControlSignal = @import("pty_platform.zig").ControlSignal;
 
 pub const Mem = struct {
     allocator: std.mem.Allocator,

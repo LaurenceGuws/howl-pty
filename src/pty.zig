@@ -5,10 +5,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
-const platform = @import("pty/PtyPlatform.zig");
-const doubles = @import("pty/PtyTest.zig");
-const unix = @import("pty/PtyUnix.zig");
-const android = @import("pty/PtyAndroid.zig");
+const platform = @import("pty/pty_platform.zig");
+const doubles = @import("pty/pty_test.zig");
+const unix = @import("pty/pty_unix.zig");
+const android = @import("pty/pty_android.zig");
 
 const PtyImpl = switch (build_options.pty_variant) {
     .unix_pty => unix.UnixPty,

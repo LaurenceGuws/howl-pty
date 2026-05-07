@@ -1,9 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
-const Pty = @import("PtyPlatform.zig").Pty;
-const ControlSignal = @import("PtyPlatform.zig").ControlSignal;
-const common = @import("PtyPlatform.zig");
+const Pty = @import("pty_platform.zig").Pty;
+const ControlSignal = @import("pty_platform.zig").ControlSignal;
+const common = @import("pty_platform.zig");
 const c = common.c;
 extern "c" fn grantpt(fd: c_int) c_int;
 extern "c" fn unlockpt(fd: c_int) c_int;
