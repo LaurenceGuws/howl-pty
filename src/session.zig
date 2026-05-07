@@ -232,9 +232,8 @@ pub const Session = struct {
         self.resize_count +%= 1;
         self.ops.resize_valid_calls += 1;
 
-        if (self.pty) |t| t.resize(cols, rows) catch |err| {
+        if (self.pty) |t| t.resize(cols, rows) catch {
             self.ops.resize_transport_errors += 1;
-            return err;
         };
     }
 

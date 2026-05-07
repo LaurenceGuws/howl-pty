@@ -95,12 +95,20 @@ pub fn setNonBlocking(fd: posix.fd_t) !void {
     if (c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) return error.OpenPtyFailed;
 }
 
+pub fn requireExecutable(path: [:0]const u8) !void {
+    if (c.access(path.ptr, c.X_OK) != 0) return error.ShellUnavailable;
+}
+
+fn cArg(path: [*:0]const u8) [*c]u8 {
+    return @ptrFromInt(@intFromPtr(path));
+}
+
 pub const ChildProcessSetupFn = *const fn (shell_path: [:0]const u8) void;
 
 pub fn childProcess(
     slave_fd: posix.fd_t,
     shell_path: [:0]const u8,
-    command: ?[:0]const u8,
+    command: ?[*:0]const u8,
     setup: ?ChildProcessSetupFn,
 ) !void {
     _ = c.setsid();
@@ -116,15 +124,15 @@ pub fn childProcess(
     if (setup) |hook| hook(shell_path);
 
     if (command) |cmd| {
-        const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-lc", cmd.ptr };
-        const envp: [*:null]const ?[*:0]const u8 = @ptrCast(@constCast(std.c.environ));
-        _ = c.execve(shell_path.ptr, @ptrCast(&argv), @ptrCast(envp));
+        const argv = [_:null][*c]u8{ cArg(shell_path.ptr), cArg("-c"), cArg(cmd) };
+        const envp: [*c]const [*c]u8 = @ptrCast(@constCast(std.c.environ));
+        _ = c.execve(shell_path.ptr, argv[0..].ptr, envp);
         c._exit(127);
     }
 
-    const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-i" };
-    const envp: [*:null]const ?[*:0]const u8 = @ptrCast(@constCast(std.c.environ));
-    _ = c.execve(shell_path.ptr, @ptrCast(&argv), @ptrCast(envp));
+    const argv = [_:null][*c]u8{ cArg(shell_path.ptr), cArg("-i") };
+    const envp: [*c]const [*c]u8 = @ptrCast(@constCast(std.c.environ));
+    _ = c.execve(shell_path.ptr, argv[0..].ptr, envp);
     c._exit(127);
 }
 

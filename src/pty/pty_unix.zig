@@ -10,6 +10,7 @@ pub const UnixPty = struct {
     allocator: std.mem.Allocator,
     shell_path: [:0]u8,
     command: ?[:0]u8,
+    command_ptr: ?[*:0]u8,
     started: bool,
     master_fd: ?posix.fd_t,
     child_pid: ?posix.pid_t,
@@ -22,7 +23,8 @@ pub const UnixPty = struct {
         errdefer allocator.free(shell_z);
         const command_z = if (command) |cmd| try allocator.dupeZ(u8, cmd) else null;
         errdefer if (command_z) |z| allocator.free(z);
-        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
+        const command_ptr: ?[*:0]u8 = if (command_z) |cmd| @ptrFromInt(@intFromPtr(cmd.ptr)) else null;
+        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .command_ptr = command_ptr, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
     pub fn deinit(self: *UnixPty) void {
@@ -38,6 +40,7 @@ pub const UnixPty = struct {
 
     fn startInternal(self: *UnixPty) anyerror!void {
         if (self.started) return error.AlreadyStarted;
+        try common.requireExecutable(self.shell_path);
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
         var winsize = c.struct_winsize{ .ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0 };
@@ -50,7 +53,7 @@ pub const UnixPty = struct {
         const pid = c.fork();
         if (pid < 0) return error.OpenPtyFailed;
         if (pid == 0) {
-            common.childProcess(@intCast(slave_fd), self.shell_path, self.command, null) catch c._exit(127);
+            common.childProcess(@intCast(slave_fd), self.shell_path, self.command_ptr, null) catch c._exit(127);
             unreachable;
         }
         _ = c.close(slave_fd);
