@@ -138,6 +138,7 @@ pub const AndroidPty = struct {
                 else => error.ReadFailed,
             };
         }
+        if (n == 0) return error.EndOfStream;
         return @intCast(n);
     }
     fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
@@ -151,7 +152,7 @@ pub const AndroidPty = struct {
             self.refreshChildState();
             if (!self.started) return error.NotStarted;
         }
-        return (fds[0].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0;
+        return (fds[0].revents & posix.POLL.IN) != 0;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));

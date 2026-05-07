@@ -74,6 +74,19 @@ pub const UnixPty = struct {
         self.started = false;
     }
 
+    fn refreshChildState(self: *UnixPty) void {
+        if (!self.started) return;
+        const pid = self.child_pid orelse return;
+        var status: c_int = 0;
+        const res = c.waitpid(pid, &status, c.WNOHANG);
+        if (res == pid) {
+            if (self.master_fd) |fd| _ = c.close(@intCast(fd));
+            self.master_fd = null;
+            self.child_pid = null;
+            self.started = false;
+        }
+    }
+
     const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
@@ -85,6 +98,7 @@ pub const UnixPty = struct {
     }
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
+        self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (bytes.len == 0) return 0;
         const n = c.write(self.master_fd.?, bytes.ptr, bytes.len);
@@ -99,6 +113,7 @@ pub const UnixPty = struct {
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
+        self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         if (buf.len == 0) return 0;
         const n = c.read(self.master_fd.?, buf.ptr, buf.len);
@@ -109,15 +124,21 @@ pub const UnixPty = struct {
                 else => error.ReadFailed,
             };
         }
+        if (n == 0) return error.EndOfStream;
         return @intCast(n);
     }
     fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
+        self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var fds = [_]posix.pollfd{.{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 }};
         const ready = try posix.poll(&fds, timeout_ms);
         if (ready <= 0) return false;
-        return (fds[0].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0;
+        if ((fds[0].revents & posix.POLL.HUP) != 0) {
+            self.refreshChildState();
+            if (!self.started) return error.NotStarted;
+        }
+        return (fds[0].revents & posix.POLL.IN) != 0;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
