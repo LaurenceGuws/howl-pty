@@ -24,6 +24,8 @@ pub const HowlSession = struct {
     pub const Pty = PtyApi.Pty;
     /// PTY implementation class enum.
     pub const PtyClass = PtyApi.PtyClass;
+    /// Typed control signal routed through the session/pty boundary.
+    pub const ControlSignal = PtyApi.ControlSignal;
     /// Build-selected PTY owner.
     pub const OwnedPty = PtyApi.OwnedPty;
     /// Build-selected PTY class value.
@@ -33,8 +35,6 @@ pub const HowlSession = struct {
     pub const MemPty = PtyApi.Mem;
     pub const PartialPty = PtyApi.Partial;
     pub const FailPty = PtyApi.Fail;
-    pub const AndroidPty = PtyApi.AndroidPty;
-    pub const UnixPty = PtyApi.UnixPty;
 
     /// Create build-selected PTY transport.
     pub fn initPty(allocator: @import("std").mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPty {
@@ -44,4 +44,5 @@ pub const HowlSession = struct {
 
 test {
     _ = @import("test/session.zig");
+    _ = @import("test/pty.zig");
 }

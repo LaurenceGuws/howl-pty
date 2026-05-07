@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
 const Pty = @import("PtyPlatform.zig").Pty;
+const ControlSignal = @import("PtyPlatform.zig").ControlSignal;
 const common = @import("PtyPlatform.zig");
 const c = common.c;
 extern "c" fn grantpt(fd: c_int) c_int;
@@ -34,7 +35,9 @@ pub const AndroidPty = struct {
         self.* = undefined;
     }
 
-    pub fn pty(self: *AndroidPty) Pty { return .{ .ptr = self, .vtable = &vtable }; }
+    pub fn pty(self: *AndroidPty) Pty {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
 
     fn startInternal(self: *AndroidPty) anyerror!void {
         if (self.started) return error.AlreadyStarted;
@@ -61,7 +64,7 @@ pub const AndroidPty = struct {
         const pid = c.fork();
         if (pid < 0) return error.OpenPtyFailed;
         if (pid == 0) {
-            common.childProcess(@intCast(slave_fd), self.shell_path, self.command) catch c._exit(127);
+            common.childProcess(@intCast(slave_fd), self.shell_path, self.command, applyAndroidShellLayout) catch c._exit(127);
             unreachable;
         }
         _ = c.close(slave_fd);
@@ -73,7 +76,7 @@ pub const AndroidPty = struct {
     fn stopInternal(self: *AndroidPty) void {
         if (!self.started) return;
         if (self.child_pid) |pid| {
-            common.sendSignal(pid, @intFromEnum(posix.SIG.TERM));
+            common.sendSignal(pid, .terminate);
             common.reapChild(pid, 30);
         }
         if (self.master_fd) |fd| _ = c.close(@intCast(fd));
@@ -96,8 +99,14 @@ pub const AndroidPty = struct {
     }
 
     const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
-    fn startImpl(ptr: *anyopaque) anyerror!void { const self: *AndroidPty = @ptrCast(@alignCast(ptr)); try self.startInternal(); }
-    fn stopImpl(ptr: *anyopaque) void { const self: *AndroidPty = @ptrCast(@alignCast(ptr)); self.stopInternal(); }
+    fn startImpl(ptr: *anyopaque) anyerror!void {
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
+        try self.startInternal();
+    }
+    fn stopImpl(ptr: *anyopaque) void {
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
+        self.stopInternal();
+    }
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
@@ -149,9 +158,42 @@ pub const AndroidPty = struct {
         self.last_cols = cols;
         self.last_rows = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: u8) void {
+    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
         if (self.child_pid) |pid| common.sendSignal(pid, signal);
     }
 };
+
+fn applyAndroidShellLayout(shell_path: [:0]const u8) void {
+    const shell = shell_path[0..shell_path.len];
+    const marker = "/usr/bin/";
+    const usr_idx = std.mem.indexOf(u8, shell, marker) orelse return;
+    if (usr_idx == 0) return;
+    const app_root = shell[0..usr_idx];
+
+    var app_data_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var prefix_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var home_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var tmp_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var ld_library_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+    const app_data = std.fmt.bufPrintZ(&app_data_buf, "{s}", .{app_root}) catch return;
+    const prefix = std.fmt.bufPrintZ(&prefix_buf, "{s}/usr", .{app_root}) catch return;
+    const home = std.fmt.bufPrintZ(&home_buf, "{s}/home", .{app_root}) catch return;
+    const tmp = std.fmt.bufPrintZ(&tmp_buf, "{s}/usr/tmp", .{app_root}) catch return;
+    const path = std.fmt.bufPrintZ(&path_buf, "{s}/usr/bin:/system/bin", .{app_root}) catch return;
+    const ld_library_path = std.fmt.bufPrintZ(&ld_library_path_buf, "{s}/usr/lib", .{app_root}) catch return;
+
+    _ = c.setenv("APP_DATA_DIR", app_data.ptr, 1);
+    _ = c.setenv("PREFIX", prefix.ptr, 1);
+    _ = c.setenv("HOME", home.ptr, 1);
+    _ = c.setenv("TMPDIR", tmp.ptr, 1);
+    _ = c.setenv("PATH", path.ptr, 1);
+    _ = c.setenv("LD_LIBRARY_PATH", ld_library_path.ptr, 1);
+    _ = c.setenv("HOWL_PM_HOST_PLATFORM", "android", 1);
+    _ = c.setenv("SHELL", shell_path.ptr, 1);
+
+    _ = c.chdir(home.ptr);
+}

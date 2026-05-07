@@ -59,16 +59,13 @@ const OwnedPtyType = struct {
 pub const PtyApi = struct {
     pub const Pty = platform.Pty;
     pub const PtyClass = platform.PtyClass;
+    pub const ControlSignal = platform.ControlSignal;
     pub const OwnedPty = OwnedPtyType;
 
     // test variants
     pub const Mem = doubles.Mem;
     pub const Partial = doubles.Partial;
     pub const Fail = doubles.Fail;
-
-    // platform variants
-    pub const UnixPty = unix.UnixPty;
-    pub const AndroidPty = android.AndroidPty;
 
     /// Build-selected PTY class value.
     pub const pty_class = SelectedPtyClass;

@@ -18,6 +18,8 @@ test "HowlSession facade methods remain available" {
 
     try std.testing.expectEqual(HowlSession.SessionStatus.idle, session.snapshot().status);
     try std.testing.expectEqual(HowlSession.PtyClass, @TypeOf(HowlSession.pty_class));
+    try std.testing.expectEqual(@as(u8, 15), HowlSession.ControlSignal.terminate.raw());
+    try std.testing.expectEqual(@as(u8, 3), HowlSession.ControlSignal.resize_notify.raw());
 }
 
 test "session flushes outbound input deterministically" {
@@ -96,4 +98,48 @@ test "session restore normalizes active snapshots to stopped" {
     try std.testing.expectEqual(@as(u16, 40), snap.rows);
     try std.testing.expectEqual(HowlSession.SessionStatus.stopped, snap.status);
     try std.testing.expectEqual(@as(u32, 7), snap.resize_count);
+}
+
+test "session publishes typed control signals through the pty boundary" {
+    const allocator = std.testing.allocator;
+
+    var mem_pty = HowlSession.MemPty.init(allocator);
+    defer mem_pty.deinit();
+
+    var session = try HowlSession.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
+    });
+    defer session.deinit();
+
+    try session.attachPty(mem_pty.pty());
+    try session.publishControlSignal(.interrupt);
+    try std.testing.expectEqual(HowlSession.ControlSignal.interrupt, mem_pty.last_signal.?);
+}
+
+test "session transport attachment is owned by session lifecycle" {
+    const allocator = std.testing.allocator;
+
+    var first = HowlSession.MemPty.init(allocator);
+    defer first.deinit();
+    var second = HowlSession.MemPty.init(allocator);
+    defer second.deinit();
+
+    var session = try HowlSession.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
+        .pty = first.pty(),
+    });
+    defer session.deinit();
+
+    try session.attachPty(second.pty());
+    try session.start();
+    try std.testing.expectError(error.SessionActive, session.detachPty());
+    session.stop();
+    try session.detachPty();
+    try std.testing.expectError(error.TransportUnavailable, session.publishControlSignal(.terminate));
 }

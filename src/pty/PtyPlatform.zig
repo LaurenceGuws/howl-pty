@@ -31,16 +31,56 @@ pub const Pty = struct {
         read: *const fn (ptr: *anyopaque, buf: []u8) anyerror!usize,
         wait_readable: *const fn (ptr: *anyopaque, timeout_ms: i32) anyerror!bool,
         resize: *const fn (ptr: *anyopaque, cols: u16, rows: u16) anyerror!void,
-        control: *const fn (ptr: *anyopaque, signal: u8) void,
+        control: *const fn (ptr: *anyopaque, signal: ControlSignal) void,
     };
 
-    pub fn start(self: Pty) anyerror!void { return self.vtable.start(self.ptr); }
-    pub fn stop(self: Pty) void { self.vtable.stop(self.ptr); }
-    pub fn write(self: Pty, bytes: []const u8) anyerror!usize { return self.vtable.write(self.ptr, bytes); }
-    pub fn read(self: Pty, buf: []u8) anyerror!usize { return self.vtable.read(self.ptr, buf); }
-    pub fn waitReadable(self: Pty, timeout_ms: i32) anyerror!bool { return self.vtable.wait_readable(self.ptr, timeout_ms); }
-    pub fn resize(self: Pty, cols: u16, rows: u16) anyerror!void { return self.vtable.resize(self.ptr, cols, rows); }
-    pub fn control(self: Pty, signal: u8) void { self.vtable.control(self.ptr, signal); }
+    pub fn start(self: Pty) anyerror!void {
+        return self.vtable.start(self.ptr);
+    }
+    pub fn stop(self: Pty) void {
+        self.vtable.stop(self.ptr);
+    }
+    pub fn write(self: Pty, bytes: []const u8) anyerror!usize {
+        return self.vtable.write(self.ptr, bytes);
+    }
+    pub fn read(self: Pty, buf: []u8) anyerror!usize {
+        return self.vtable.read(self.ptr, buf);
+    }
+    pub fn waitReadable(self: Pty, timeout_ms: i32) anyerror!bool {
+        return self.vtable.wait_readable(self.ptr, timeout_ms);
+    }
+    pub fn resize(self: Pty, cols: u16, rows: u16) anyerror!void {
+        return self.vtable.resize(self.ptr, cols, rows);
+    }
+    pub fn control(self: Pty, signal: ControlSignal) void {
+        self.vtable.control(self.ptr, signal);
+    }
+};
+
+pub const ControlSignal = enum(u8) {
+    hangup = 1,
+    interrupt = 2,
+    resize_notify = 3,
+    kill = 9,
+    terminate = 15,
+
+    pub fn fromRaw(value: u8) error{InvalidControlSignal}!ControlSignal {
+        return std.meta.intToEnum(ControlSignal, value) catch error.InvalidControlSignal;
+    }
+
+    pub fn raw(self: ControlSignal) u8 {
+        return @intFromEnum(self);
+    }
+
+    pub fn posixSignal(self: ControlSignal) posix.SIG {
+        return switch (self) {
+            .hangup => .HUP,
+            .interrupt => .INT,
+            .resize_notify => .WINCH,
+            .kill => .KILL,
+            .terminate => .TERM,
+        };
+    }
 };
 
 pub const PtyClass = enum {
@@ -55,7 +95,14 @@ pub fn setNonBlocking(fd: posix.fd_t) !void {
     if (c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) return error.OpenPtyFailed;
 }
 
-pub fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:0]const u8) !void {
+pub const ChildProcessSetupFn = *const fn (shell_path: [:0]const u8) void;
+
+pub fn childProcess(
+    slave_fd: posix.fd_t,
+    shell_path: [:0]const u8,
+    command: ?[:0]const u8,
+    setup: ?ChildProcessSetupFn,
+) !void {
     _ = c.setsid();
     _ = c.ioctl(@intCast(slave_fd), c.TIOCSCTTY, @as(c_ulong, 0));
 
@@ -66,7 +113,7 @@ pub fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:
 
     _ = c.setenv("TERM", "xterm-256color", 1);
     _ = c.setenv("PS1", "howl$ ", 1);
-    applyShellDerivedLayout(shell_path);
+    if (setup) |hook| hook(shell_path);
 
     if (command) |cmd| {
         const argv = [_:null]?[*:0]const u8{ shell_path.ptr, "-lc", cmd.ptr };
@@ -81,48 +128,8 @@ pub fn childProcess(slave_fd: posix.fd_t, shell_path: [:0]const u8, command: ?[:
     c._exit(127);
 }
 
-fn applyShellDerivedLayout(shell_path: [:0]const u8) void {
-    const shell = shell_path[0..shell_path.len];
-    const marker = "/usr/bin/";
-    const usr_idx = std.mem.indexOf(u8, shell, marker) orelse return;
-    if (usr_idx == 0) return;
-    const app_root = shell[0..usr_idx];
-
-    var app_data_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var prefix_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var home_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var tmp_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var ld_library_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-
-    const app_data = std.fmt.bufPrintZ(&app_data_buf, "{s}", .{app_root}) catch return;
-    const prefix = std.fmt.bufPrintZ(&prefix_buf, "{s}/usr", .{app_root}) catch return;
-    const home = std.fmt.bufPrintZ(&home_buf, "{s}/home", .{app_root}) catch return;
-    const tmp = std.fmt.bufPrintZ(&tmp_buf, "{s}/usr/tmp", .{app_root}) catch return;
-    const path = std.fmt.bufPrintZ(&path_buf, "{s}/usr/bin:/system/bin", .{app_root}) catch return;
-    const ld_library_path = std.fmt.bufPrintZ(&ld_library_path_buf, "{s}/usr/lib", .{app_root}) catch return;
-
-    _ = c.setenv("APP_DATA_DIR", app_data.ptr, 1);
-    _ = c.setenv("PREFIX", prefix.ptr, 1);
-    _ = c.setenv("HOME", home.ptr, 1);
-    _ = c.setenv("TMPDIR", tmp.ptr, 1);
-    _ = c.setenv("PATH", path.ptr, 1);
-    _ = c.setenv("LD_LIBRARY_PATH", ld_library_path.ptr, 1);
-    _ = c.setenv("HOWL_PM_HOST_PLATFORM", "android", 1);
-    _ = c.setenv("SHELL", shell_path.ptr, 1);
-
-    _ = c.chdir(home.ptr);
-}
-
-pub fn sendSignal(pid: posix.pid_t, sig: u8) void {
-    const signal: posix.SIG = switch (sig) {
-        1 => .HUP,
-        2 => .INT,
-        15 => .TERM,
-        9 => .KILL,
-        else => return,
-    };
-    posix.kill(pid, signal) catch {};
+pub fn sendSignal(pid: posix.pid_t, signal: ControlSignal) void {
+    posix.kill(pid, signal.posixSignal()) catch {};
 }
 
 pub fn reapChild(pid: posix.pid_t, timeout_ms: i64) void {
@@ -133,7 +140,7 @@ pub fn reapChild(pid: posix.pid_t, timeout_ms: i64) void {
         const res = c.waitpid(pid, &status, c.WNOHANG);
         if (res == pid) return;
         if (waited_ticks >= max_wait_ticks) {
-            sendSignal(pid, @intFromEnum(posix.SIG.KILL));
+            sendSignal(pid, .kill);
             _ = c.waitpid(pid, &status, 0);
             return;
         }

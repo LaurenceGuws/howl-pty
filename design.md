@@ -12,6 +12,7 @@ It does not model terminal semantics. It owns queueing, transport start/stop, tr
 - `Session`: queue/lifecycle owner.
 - `OwnedPty`: build-selected PTY owner.
 - `Pty`: transport interface contract.
+- `ControlSignal`: typed control signal vocabulary for the PTY boundary.
 
 ```mermaid
 classDiagram
@@ -46,6 +47,7 @@ classDiagram
 - `OwnedPty` owns the concrete selected PTY implementation and cleanup.
 - `Session` talks to the abstract `Pty` interface only.
 - Test PTY variants are exported for conformance testing, not as host architecture.
+- Concrete platform PTY implementations stay internal to `howl-session`; hosts consume `OwnedPty` or `Pty`, not `UnixPty`/`AndroidPty` directly.
 
 ## Lifecycle
 ```mermaid
@@ -89,7 +91,9 @@ sequenceDiagram
 ## API Contracts
 - `initPty` returns an owned transport; callers must eventually call `deinit` on that owner.
 - `Session.init` does not start the transport.
+- `Session.attachPty` and `Session.detachPty` are the supported transport replacement hooks while inactive.
 - `start` transitions to active and starts the transport if present.
+- `publishControlSignal` accepts a typed `ControlSignal`, not a raw signal byte.
 - `publishHostInput` only queues bytes; `flushOutboundInput` performs writes.
 - `resize` updates tracked geometry and forwards to transport.
 - Transport failures move the session to `stopped`.

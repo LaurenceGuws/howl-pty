@@ -9,6 +9,7 @@ const pty_api = @import("pty.zig");
 pub const SessionApi = struct {
     pub const PtyClass = SessionPtyClass;
     pub const Pty = SessionPty;
+    pub const ControlSignal = SessionControlSignal;
     pub const Config = SessionConfig;
     pub const Status = SessionStatus;
     pub const Snapshot = SessionSnapshot;
@@ -18,8 +19,10 @@ pub const SessionApi = struct {
 
 const PtyClass = pty_api.PtyApi.PtyClass;
 const Pty = pty_api.PtyApi.Pty;
+const ControlSignal = pty_api.PtyApi.ControlSignal;
 const SessionPtyClass = PtyClass;
 const SessionPty = Pty;
+const SessionControlSignal = ControlSignal;
 
 /// Session initialization config.
 const Config = struct {
@@ -111,6 +114,18 @@ const Session = struct {
         };
         self.status = .active;
         self.ops.start_successes += 1;
+    }
+
+    /// Attach or replace the session transport while inactive.
+    pub fn attachPty(self: *Session, pty: Pty) error{SessionActive}!void {
+        if (self.status == .active) return error.SessionActive;
+        self.pty = pty;
+    }
+
+    /// Detach the current transport while inactive.
+    pub fn detachPty(self: *Session) error{SessionActive}!void {
+        if (self.status == .active) return error.SessionActive;
+        self.pty = null;
     }
 
     /// Stop the transport and mark session stopped.
@@ -213,7 +228,7 @@ const Session = struct {
     }
 
     /// Send control signal to transport child process.
-    pub fn publishControlSignal(self: *Session, signal: u8) error{TransportUnavailable}!void {
+    pub fn publishControlSignal(self: *Session, signal: ControlSignal) error{TransportUnavailable}!void {
         const t = self.pty orelse return error.TransportUnavailable;
         t.control(signal);
     }
