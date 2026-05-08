@@ -26,6 +26,8 @@ pub const PtyClass = PtyApi.PtyClass;
 pub const ControlSignal = PtyApi.ControlSignal;
 /// Build-selected PTY owner.
 pub const OwnedPty = PtyApi.OwnedPty;
+/// PTY child-process launch contract.
+pub const PtyLaunchConfig = PtyApi.LaunchConfig;
 /// Build-selected PTY class value.
 pub const pty_class = PtyApi.pty_class;
 
@@ -35,8 +37,8 @@ pub const PartialPty = PtyApi.Partial;
 pub const FailPty = PtyApi.Fail;
 
 /// Create build-selected PTY transport.
-pub fn initPty(allocator: @import("std").mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8, start_path: ?[]const u8) !OwnedPty {
-    return PtyApi.initPty(allocator, shell_path, command, start_path);
+pub fn initPty(allocator: @import("std").mem.Allocator, launch: PtyLaunchConfig) !OwnedPty {
+    return PtyApi.initPty(allocator, launch);
 }
 
 test {
