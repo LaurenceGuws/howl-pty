@@ -14,26 +14,32 @@ pub const AndroidPty = struct {
     shell_path: [:0]u8,
     command: ?[:0]u8,
     command_ptr: ?[*:0]u8,
+    start_path: ?[:0]u8,
+    start_path_ptr: ?[*:0]u8,
     started: bool,
     master_fd: ?posix.fd_t,
     child_pid: ?posix.pid_t,
     last_cols: u16,
     last_rows: u16,
 
-    pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8) !AndroidPty {
+    pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8, start_path: ?[]const u8) !AndroidPty {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos and builtin.os.tag != .android) return error.UnsupportedPlatform;
         const shell_z = try allocator.dupeZ(u8, shell_path);
         errdefer allocator.free(shell_z);
         const command_z = if (command) |cmd| try allocator.dupeZ(u8, cmd) else null;
         errdefer if (command_z) |z| allocator.free(z);
+        const start_path_z = if (start_path) |path| try allocator.dupeZ(u8, path) else null;
+        errdefer if (start_path_z) |z| allocator.free(z);
         const command_ptr: ?[*:0]u8 = if (command_z) |cmd| @ptrFromInt(@intFromPtr(cmd.ptr)) else null;
-        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .command_ptr = command_ptr, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
+        const start_path_ptr: ?[*:0]u8 = if (start_path_z) |path| @ptrFromInt(@intFromPtr(path.ptr)) else null;
+        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .command_ptr = command_ptr, .start_path = start_path_z, .start_path_ptr = start_path_ptr, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
     pub fn deinit(self: *AndroidPty) void {
         self.stopInternal();
         self.allocator.free(self.shell_path);
         if (self.command) |cmd| self.allocator.free(cmd);
+        if (self.start_path) |path| self.allocator.free(path);
         self.* = undefined;
     }
 
@@ -67,7 +73,7 @@ pub const AndroidPty = struct {
         const pid = c.fork();
         if (pid < 0) return error.OpenPtyFailed;
         if (pid == 0) {
-            common.childProcess(@intCast(slave_fd), self.shell_path, self.command_ptr, applyAndroidShellLayout) catch c._exit(127);
+            common.childProcess(@intCast(slave_fd), self.shell_path, self.command_ptr, self.start_path_ptr, applyAndroidShellLayout) catch c._exit(127);
             unreachable;
         }
         _ = c.close(slave_fd);

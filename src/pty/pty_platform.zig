@@ -109,6 +109,7 @@ pub fn childProcess(
     slave_fd: posix.fd_t,
     shell_path: [:0]const u8,
     command: ?[*:0]const u8,
+    cwd: ?[*:0]const u8,
     setup: ?ChildProcessSetupFn,
 ) !void {
     _ = c.setsid();
@@ -121,6 +122,9 @@ pub fn childProcess(
 
     _ = c.setenv("TERM", "xterm-256color", 1);
     _ = c.setenv("PS1", "howl$ ", 1);
+    if (cwd) |dir| {
+        if (c.chdir(dir) != 0) c._exit(127);
+    }
     if (setup) |hook| hook(shell_path);
 
     if (command) |cmd| {

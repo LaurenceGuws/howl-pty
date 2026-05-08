@@ -35,8 +35,8 @@ pub const PartialPty = PtyApi.Partial;
 pub const FailPty = PtyApi.Fail;
 
 /// Create build-selected PTY transport.
-pub fn initPty(allocator: @import("std").mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPty {
-    return PtyApi.initPty(allocator, shell_path, command);
+pub fn initPty(allocator: @import("std").mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8, start_path: ?[]const u8) !OwnedPty {
+    return PtyApi.initPty(allocator, shell_path, command, start_path);
 }
 
 test {

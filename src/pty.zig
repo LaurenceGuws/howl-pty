@@ -20,10 +20,10 @@ const selected_pty_class = switch (build_options.pty_variant) {
     .android_pty => platform.PtyClass.android_pty,
 };
 
-fn initPtyImpl(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !PtyImpl {
+fn initPtyImpl(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8, start_path: ?[]const u8) !PtyImpl {
     return switch (build_options.pty_variant) {
-        .unix_pty => PtyImpl.init(allocator, shell_path orelse "/bin/sh", command),
-        .android_pty => PtyImpl.init(allocator, shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), command),
+        .unix_pty => PtyImpl.init(allocator, shell_path orelse "/bin/sh", command, start_path),
+        .android_pty => PtyImpl.init(allocator, shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), command, start_path),
     };
 }
 
@@ -35,8 +35,8 @@ const OwnedPtyType = struct {
     impl: SelectedPtyImpl,
 
     /// Construct the build-selected PTY owner.
-    pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
-        return .{ .impl = try initPtyImpl(allocator, shell_path, command) };
+    pub fn init(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8, start_path: ?[]const u8) !OwnedPtyType {
+        return .{ .impl = try initPtyImpl(allocator, shell_path, command, start_path) };
     }
 
     /// Release the owned PTY transport.
@@ -70,6 +70,6 @@ pub const Fail = doubles.Fail;
 pub const pty_class = SelectedPtyClass;
 
 /// Construct the build-selected PTY owner.
-pub fn initPty(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8) !OwnedPtyType {
-    return OwnedPtyType.init(allocator, shell_path, command);
+pub fn initPty(allocator: std.mem.Allocator, shell_path: ?[]const u8, command: ?[]const u8, start_path: ?[]const u8) !OwnedPtyType {
+    return OwnedPtyType.init(allocator, shell_path, command, start_path);
 }
