@@ -20,9 +20,13 @@ const selected_pty_class = switch (build_options.pty_variant) {
     .android_pty => platform.PtyClass.android_pty,
 };
 
+/// Child process launch inputs for the build-selected PTY owner.
 pub const LaunchConfig = struct {
+    /// Executable path to launch. Defaults to the platform shell when omitted.
     shell_path: ?[]const u8 = null,
+    /// Optional command passed to the shell as its command string.
     command: ?[]const u8 = null,
+    /// Optional child process working directory applied before exec.
     start_path: ?[]const u8 = null,
 };
 
