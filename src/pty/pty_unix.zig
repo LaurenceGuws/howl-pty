@@ -10,6 +10,13 @@ const ControlSignal = @import("pty_platform.zig").ControlSignal;
 const common = @import("pty_platform.zig");
 const c = common.c;
 
+fn trace(comptime fmt: []const u8, args: anytype) void {
+    if (std.c.getenv("HOWL_TRACE_STDOUT") == null) return;
+    var buf: [512]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf, fmt, args) catch return;
+    _ = std.posix.system.write(std.posix.STDOUT_FILENO, msg.ptr, msg.len);
+}
+
 pub const UnixPty = struct {
     allocator: std.mem.Allocator,
     shell_path: [:0]u8,
@@ -56,6 +63,7 @@ pub const UnixPty = struct {
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
         var wake_fds = [_]c_int{ -1, -1 };
+        trace("howl-pty event=start_enter platform=unix\n", .{});
         var winsize = c.struct_winsize{ .ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.openpty(&master_fd, &slave_fd, null, null, &winsize) != 0) return error.OpenPtyFailed;
         if (c.pipe(&wake_fds) != 0) return error.OpenPtyFailed;
@@ -82,17 +90,22 @@ pub const UnixPty = struct {
         self.wake_write_fd = @intCast(wake_fds[1]);
         self.child_pid = pid;
         self.started = true;
+        trace("howl-pty event=start_leave platform=unix pid={} master_fd={} wake_read_fd={} wake_write_fd={}\n", .{ pid, master_fd, wake_fds[0], wake_fds[1] });
     }
 
     fn stopInternal(self: *UnixPty) void {
         if (!self.started) return;
+        trace("howl-pty event=stop_enter platform=unix pid_present={}\n", .{self.child_pid != null});
         if (self.wake_write_fd) |fd| {
             var byte: [1]u8 = .{1};
             _ = c.write(fd, &byte, 1);
+            trace("howl-pty event=wake_pipe_write fd={}\n", .{fd});
         }
         if (self.child_pid) |pid| {
-            common.sendSignal(pid, .terminate);
-            common.reapChild(pid);
+            common.sendGroupSignal(pid, .hangup);
+            common.sendGroupSignal(pid, .terminate);
+            common.sendGroupSignal(pid, .kill);
+            common.reapChildNow(pid);
         }
         if (self.master_fd) |fd| _ = c.close(@intCast(fd));
         if (self.wake_read_fd) |fd| _ = c.close(@intCast(fd));
@@ -102,6 +115,7 @@ pub const UnixPty = struct {
         self.wake_read_fd = null;
         self.wake_write_fd = null;
         self.started = false;
+        trace("howl-pty event=stop_leave platform=unix\n", .{});
     }
 
     fn refreshChildState(self: *UnixPty) void {
@@ -148,6 +162,7 @@ pub const UnixPty = struct {
         if (buf.len == 0) return 0;
         const n = c.read(self.master_fd.?, buf.ptr, buf.len);
         if (n < 0) {
+            trace("howl-pty event=read_error errno={}\n", .{@intFromEnum(posix.errno(n))});
             return switch (posix.errno(n)) {
                 .AGAIN => error.WouldBlock,
                 .INTR => error.Interrupted,
@@ -155,6 +170,7 @@ pub const UnixPty = struct {
             };
         }
         if (n == 0) return error.EndOfStream;
+        trace("howl-pty event=read bytes={}\n", .{n});
         return @intCast(n);
     }
     fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
@@ -166,7 +182,9 @@ pub const UnixPty = struct {
             .{ .fd = self.wake_read_fd orelse return error.NotStarted, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
         };
         const poll_timeout: i32 = if (timeout_ms < 0) -1 else 0;
+        trace("howl-pty event=poll_enter timeout={} poll_timeout={} master_fd={} wake_fd={}\n", .{ timeout_ms, poll_timeout, fds[0].fd, fds[1].fd });
         const ready = try posix.poll(&fds, poll_timeout);
+        trace("howl-pty event=poll_leave ready={} master_revents={} wake_revents={}\n", .{ ready, fds[0].revents, fds[1].revents });
         if (ready <= 0) return false;
         if ((fds[1].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0) return false;
         if ((fds[0].revents & posix.POLL.HUP) != 0) {

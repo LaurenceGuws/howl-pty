@@ -148,7 +148,11 @@ pub fn sendSignal(pid: posix.pid_t, signal: ControlSignal) void {
     posix.kill(pid, signal.posixSignal()) catch {};
 }
 
-pub fn reapChild(pid: posix.pid_t) void {
+pub fn sendGroupSignal(pid: posix.pid_t, signal: ControlSignal) void {
+    posix.kill(-pid, signal.posixSignal()) catch {};
+}
+
+pub fn reapChildNow(pid: posix.pid_t) void {
     var status: c_int = 0;
-    _ = c.waitpid(pid, &status, 0);
+    _ = c.waitpid(pid, &status, c.WNOHANG);
 }
