@@ -9,13 +9,6 @@ const Pty = @import("pty_platform.zig").Pty;
 const ControlSignal = @import("pty_platform.zig").ControlSignal;
 const common = @import("pty_platform.zig");
 const c = common.c;
-
-fn trace(comptime fmt: []const u8, args: anytype) void {
-    if (std.c.getenv("HOWL_TRACE_STDOUT") == null) return;
-    var buf: [512]u8 = undefined;
-    const msg = std.fmt.bufPrint(&buf, fmt, args) catch return;
-    _ = std.posix.system.write(std.posix.STDOUT_FILENO, msg.ptr, msg.len);
-}
 extern "c" fn grantpt(fd: c_int) c_int;
 extern "c" fn unlockpt(fd: c_int) c_int;
 extern "c" fn ptsname_r(fd: c_int, buf: [*]u8, buflen: usize) c_int;
@@ -151,7 +144,6 @@ pub const AndroidPty = struct {
         if (buf.len == 0) return 0;
         const n = c.read(self.master_fd.?, buf.ptr, buf.len);
         if (n < 0) {
-            trace("howl-pty event=read_error platform=android errno={}\n", .{@intFromEnum(posix.errno(n))});
             return switch (posix.errno(n)) {
                 .AGAIN => error.WouldBlock,
                 .INTR => error.Interrupted,
@@ -159,7 +151,6 @@ pub const AndroidPty = struct {
             };
         }
         if (n == 0) return error.EndOfStream;
-        trace("howl-pty event=read platform=android bytes={}\n", .{n});
         return @intCast(n);
     }
     fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
@@ -168,9 +159,7 @@ pub const AndroidPty = struct {
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var fds = [_]posix.pollfd{.{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 }};
         const poll_timeout: i32 = if (timeout_ms < 0) -1 else 0;
-        trace("howl-pty event=poll_enter platform=android timeout={} poll_timeout={} master_fd={}\n", .{ timeout_ms, poll_timeout, fds[0].fd });
         const ready = try posix.poll(&fds, poll_timeout);
-        trace("howl-pty event=poll_leave platform=android ready={} master_revents={}\n", .{ ready, fds[0].revents });
         if (ready <= 0) return false;
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
             self.refreshChildState();
