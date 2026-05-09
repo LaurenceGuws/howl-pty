@@ -19,6 +19,8 @@ pub const UnixPty = struct {
     start_path_ptr: ?[*:0]u8,
     started: bool,
     master_fd: ?posix.fd_t,
+    wake_read_fd: ?posix.fd_t,
+    wake_write_fd: ?posix.fd_t,
     child_pid: ?posix.pid_t,
     last_cols: u16,
     last_rows: u16,
@@ -33,7 +35,7 @@ pub const UnixPty = struct {
         errdefer if (start_path_z) |z| allocator.free(z);
         const command_ptr: ?[*:0]u8 = if (command_z) |cmd| @ptrFromInt(@intFromPtr(cmd.ptr)) else null;
         const start_path_ptr: ?[*:0]u8 = if (start_path_z) |path| @ptrFromInt(@intFromPtr(path.ptr)) else null;
-        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .command_ptr = command_ptr, .start_path = start_path_z, .start_path_ptr = start_path_ptr, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
+        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .command_ptr = command_ptr, .start_path = start_path_z, .start_path_ptr = start_path_ptr, .started = false, .master_fd = null, .wake_read_fd = null, .wake_write_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
     pub fn deinit(self: *UnixPty) void {
@@ -53,34 +55,52 @@ pub const UnixPty = struct {
         try common.requireExecutable(self.shell_path);
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
+        var wake_fds = [_]c_int{ -1, -1 };
         var winsize = c.struct_winsize{ .ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.openpty(&master_fd, &slave_fd, null, null, &winsize) != 0) return error.OpenPtyFailed;
+        if (c.pipe(&wake_fds) != 0) return error.OpenPtyFailed;
+        try common.setNonBlocking(@intCast(wake_fds[0]));
+        try common.setNonBlocking(@intCast(wake_fds[1]));
         errdefer {
             if (master_fd >= 0) _ = c.close(master_fd);
             if (slave_fd >= 0) _ = c.close(slave_fd);
+            if (wake_fds[0] >= 0) _ = c.close(wake_fds[0]);
+            if (wake_fds[1] >= 0) _ = c.close(wake_fds[1]);
         }
         try common.setNonBlocking(@intCast(master_fd));
         const pid = c.fork();
         if (pid < 0) return error.OpenPtyFailed;
         if (pid == 0) {
+            _ = c.close(wake_fds[0]);
+            _ = c.close(wake_fds[1]);
             common.childProcess(@intCast(slave_fd), self.shell_path, self.command_ptr, self.start_path_ptr, null) catch c._exit(127);
             unreachable;
         }
         _ = c.close(slave_fd);
         self.master_fd = @intCast(master_fd);
+        self.wake_read_fd = @intCast(wake_fds[0]);
+        self.wake_write_fd = @intCast(wake_fds[1]);
         self.child_pid = pid;
         self.started = true;
     }
 
     fn stopInternal(self: *UnixPty) void {
         if (!self.started) return;
+        if (self.wake_write_fd) |fd| {
+            var byte: [1]u8 = .{1};
+            _ = c.write(fd, &byte, 1);
+        }
         if (self.child_pid) |pid| {
             common.sendSignal(pid, .terminate);
-            common.reapChild(pid, 30);
+            common.reapChild(pid);
         }
         if (self.master_fd) |fd| _ = c.close(@intCast(fd));
+        if (self.wake_read_fd) |fd| _ = c.close(@intCast(fd));
+        if (self.wake_write_fd) |fd| _ = c.close(@intCast(fd));
         self.child_pid = null;
         self.master_fd = null;
+        self.wake_read_fd = null;
+        self.wake_write_fd = null;
         self.started = false;
     }
 
@@ -141,9 +161,14 @@ pub const UnixPty = struct {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
-        var fds = [_]posix.pollfd{.{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 }};
-        const ready = try posix.poll(&fds, timeout_ms);
+        var fds = [_]posix.pollfd{
+            .{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
+            .{ .fd = self.wake_read_fd orelse return error.NotStarted, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
+        };
+        const poll_timeout: i32 = if (timeout_ms < 0) -1 else 0;
+        const ready = try posix.poll(&fds, poll_timeout);
         if (ready <= 0) return false;
+        if ((fds[1].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0) return false;
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
             self.refreshChildState();
             if (!self.started) return error.NotStarted;

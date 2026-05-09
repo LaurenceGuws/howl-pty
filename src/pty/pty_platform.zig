@@ -148,19 +148,7 @@ pub fn sendSignal(pid: posix.pid_t, signal: ControlSignal) void {
     posix.kill(pid, signal.posixSignal()) catch {};
 }
 
-pub fn reapChild(pid: posix.pid_t, timeout_ms: i64) void {
-    const max_wait_ticks: i64 = @max(1, @divTrunc(timeout_ms, 2));
-    var waited_ticks: i64 = 0;
-    while (true) {
-        var status: c_int = 0;
-        const res = c.waitpid(pid, &status, c.WNOHANG);
-        if (res == pid) return;
-        if (waited_ticks >= max_wait_ticks) {
-            sendSignal(pid, .kill);
-            _ = c.waitpid(pid, &status, 0);
-            return;
-        }
-        _ = c.usleep(2000);
-        waited_ticks += 1;
-    }
+pub fn reapChild(pid: posix.pid_t) void {
+    var status: c_int = 0;
+    _ = c.waitpid(pid, &status, 0);
 }

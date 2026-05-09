@@ -90,7 +90,7 @@ pub const AndroidPty = struct {
         if (!self.started) return;
         if (self.child_pid) |pid| {
             common.sendSignal(pid, .terminate);
-            common.reapChild(pid, 30);
+            common.reapChild(pid);
         }
         if (self.master_fd) |fd| _ = c.close(@intCast(fd));
         self.child_pid = null;
@@ -156,7 +156,8 @@ pub const AndroidPty = struct {
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var fds = [_]posix.pollfd{.{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 }};
-        const ready = try posix.poll(&fds, timeout_ms);
+        const poll_timeout: i32 = if (timeout_ms < 0) -1 else 0;
+        const ready = try posix.poll(&fds, poll_timeout);
         if (ready <= 0) return false;
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
             self.refreshChildState();
