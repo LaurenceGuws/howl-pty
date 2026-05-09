@@ -1,3 +1,7 @@
+//! Responsibility: cover session PTY surface behavior.
+//! Ownership: howl-session tests own PTY selection and lifecycle checks.
+//! Reason: keeps PTY regression coverage separate from runtime modules.
+
 const std = @import("std");
 const howl_session = @import("howl_session");
 

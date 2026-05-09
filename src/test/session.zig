@@ -1,3 +1,7 @@
+//! Responsibility: cover session queue and lifecycle behavior.
+//! Ownership: howl-session tests own session regression checks.
+//! Reason: keeps session behavior coverage separate from runtime modules.
+
 const std = @import("std");
 const howl_session = @import("howl_session");
 

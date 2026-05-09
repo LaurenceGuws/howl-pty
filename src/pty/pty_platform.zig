@@ -1,3 +1,7 @@
+//! Responsibility: define shared native PTY platform bindings.
+//! Ownership: session PTY layer owns OS C imports and PTY interface wiring.
+//! Reason: keeps platform PTY details behind session-owned variants.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
