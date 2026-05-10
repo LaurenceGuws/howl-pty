@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
     const pty_variant = b.option([]const u8, "pty-variant", "pty variant for howl-session") orelse "unix_pty";
 
     const mod = b.addModule("howl_session", .{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/howl_session.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -46,4 +46,22 @@ pub fn build(b: *std.Build) void {
     test_unit_build_step.dependOn(&b.addInstallArtifact(mod_tests, .{}).step);
     test_unit_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(test_unit_step);
+
+    const ffi_mod = b.createModule(.{
+        .root_source_file = b.path("src/howl_session.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    ffi_mod.addOptions("build_options", build_options);
+    ffi_mod.addImport("howl_session", ffi_mod);
+
+    const ffi_lib = b.addLibrary(.{
+        .name = "howl_session",
+        .linkage = .dynamic,
+        .root_module = ffi_mod,
+    });
+    const ffi_build_step = b.step("ffi:build", "Build the howl-session C FFI library");
+    ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
+    b.installArtifact(ffi_lib);
 }

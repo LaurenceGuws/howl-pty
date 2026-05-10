@@ -18,7 +18,7 @@ pub const Config = struct {
     pty: ?Pty = null,
 };
 /// Session lifecycle status.
-pub const Status = enum {
+pub const Status = enum(u8) {
     idle,
     active,
     stopped,

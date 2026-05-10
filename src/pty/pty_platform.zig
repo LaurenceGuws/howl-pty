@@ -69,7 +69,14 @@ pub const ControlSignal = enum(u8) {
     terminate = 15,
 
     pub fn fromRaw(value: u8) error{InvalidControlSignal}!ControlSignal {
-        return std.meta.intToEnum(ControlSignal, value) catch error.InvalidControlSignal;
+        return switch (value) {
+            @intFromEnum(ControlSignal.hangup) => .hangup,
+            @intFromEnum(ControlSignal.interrupt) => .interrupt,
+            @intFromEnum(ControlSignal.resize_notify) => .resize_notify,
+            @intFromEnum(ControlSignal.kill) => .kill,
+            @intFromEnum(ControlSignal.terminate) => .terminate,
+            else => error.InvalidControlSignal,
+        };
     }
 
     pub fn raw(self: ControlSignal) u8 {

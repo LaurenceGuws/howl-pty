@@ -8,10 +8,10 @@ const howl_session = @import("howl_session");
 test "howl_session root methods remain available" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Pty.Mem.init(allocator);
+    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_session.runtime.Session.init(.{
+    var session = try howl_session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -20,19 +20,19 @@ test "howl_session root methods remain available" {
     });
     defer session.deinit();
 
-    try std.testing.expectEqual(howl_session.runtime.Status.idle, session.snapshot().status);
-    try std.testing.expectEqual(howl_session.pty.Class, @TypeOf(howl_session.pty.class));
-    try std.testing.expectEqual(@as(u8, 15), howl_session.pty.ControlSignal.terminate.raw());
-    try std.testing.expectEqual(@as(u8, 3), howl_session.pty.ControlSignal.resize_notify.raw());
+    try std.testing.expectEqual(howl_session.Status.idle, session.snapshot().status);
+    try std.testing.expectEqual(howl_session.transport.Class, @TypeOf(howl_session.transport.class));
+    try std.testing.expectEqual(@as(u8, 15), howl_session.transport.ControlSignal.terminate.raw());
+    try std.testing.expectEqual(@as(u8, 3), howl_session.transport.ControlSignal.resize_notify.raw());
 }
 
 test "session flushes outbound input deterministically" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Pty.Mem.init(allocator);
+    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_session.runtime.Session.init(.{
+    var session = try howl_session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -55,10 +55,10 @@ test "session flushes outbound input deterministically" {
 test "session preserves remainder after partial transport write" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_session.testing.Pty.Partial.init(allocator, 3);
+    var partial_pty = howl_session.testing.Transport.Partial.init(allocator, 3);
     defer partial_pty.deinit();
 
-    var session = try howl_session.runtime.Session.init(.{
+    var session = try howl_session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -82,7 +82,7 @@ test "session preserves remainder after partial transport write" {
 test "session restore normalizes active snapshots to stopped" {
     const allocator = std.testing.allocator;
 
-    var session = try howl_session.runtime.Session.init(.{
+    var session = try howl_session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -100,17 +100,17 @@ test "session restore normalizes active snapshots to stopped" {
     const snap = session.snapshot();
     try std.testing.expectEqual(@as(u16, 132), snap.cols);
     try std.testing.expectEqual(@as(u16, 40), snap.rows);
-    try std.testing.expectEqual(howl_session.runtime.Status.stopped, snap.status);
+    try std.testing.expectEqual(howl_session.Status.stopped, snap.status);
     try std.testing.expectEqual(@as(u32, 7), snap.resize_count);
 }
 
 test "session publishes typed control signals through the pty boundary" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Pty.Mem.init(allocator);
+    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_session.runtime.Session.init(.{
+    var session = try howl_session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -120,18 +120,18 @@ test "session publishes typed control signals through the pty boundary" {
 
     try session.attachPty(mem_pty.pty());
     try session.publishControlSignal(.interrupt);
-    try std.testing.expectEqual(howl_session.pty.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try std.testing.expectEqual(howl_session.transport.ControlSignal.interrupt, mem_pty.last_signal.?);
 }
 
 test "session transport attachment is owned by session lifecycle" {
     const allocator = std.testing.allocator;
 
-    var first = howl_session.testing.Pty.Mem.init(allocator);
+    var first = howl_session.testing.Transport.Mem.init(allocator);
     defer first.deinit();
-    var second = howl_session.testing.Pty.Mem.init(allocator);
+    var second = howl_session.testing.Transport.Mem.init(allocator);
     defer second.deinit();
 
-    var session = try howl_session.runtime.Session.init(.{
+    var session = try howl_session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
