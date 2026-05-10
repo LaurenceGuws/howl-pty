@@ -1,6 +1,5 @@
 //! Session namespace wrapper for the howl-session module.
 
-const std = @import("std");
 const options = @import("session_options");
 
 pub const c_api = if (options.c_abi) @import("ffi.zig") else void;
@@ -36,10 +35,7 @@ pub const transport = struct {
     pub const Owned = transport_mod.OwnedPty;
     pub const LaunchConfig = transport_mod.LaunchConfig;
     pub const class = transport_mod.pty_class;
-
-    pub fn init(allocator: std.mem.Allocator, launch: transport_mod.LaunchConfig) !Owned {
-        return transport_mod.initPty(allocator, launch);
-    }
+    pub const init = transport_mod.initPty;
 };
 
 pub const testing = struct {
@@ -52,10 +48,9 @@ pub const testing = struct {
 
 pub const TestTransport = testing.Transport;
 
-pub fn initTransport(allocator: std.mem.Allocator, launch: LaunchConfig) !OwnedTransport {
-    return transport.init(allocator, launch);
-}
+pub const initTransport = transport_mod.initPty;
 
 test {
+    const std = @import("std");
     std.testing.refAllDecls(@This());
 }
