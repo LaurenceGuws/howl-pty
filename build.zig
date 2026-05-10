@@ -24,9 +24,10 @@ pub fn build(b: *std.Build) void {
     else
         std.debug.panic("unsupported howl-session pty variant: {s}", .{pty_variant});
 
-    const build_options = b.addOptions();
-    build_options.addOption(PtyVariant, "pty_variant", selected_variant);
-    mod.addOptions("build_options", build_options);
+    const module_options = b.addOptions();
+    module_options.addOption(PtyVariant, "pty_variant", selected_variant);
+    module_options.addOption(bool, "c_abi", false);
+    mod.addOptions("session_options", module_options);
     mod.addImport("howl_session", mod);
 
     const mod_tests = b.addTest(.{
@@ -53,7 +54,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    ffi_mod.addOptions("build_options", build_options);
+    const ffi_options = b.addOptions();
+    ffi_options.addOption(PtyVariant, "pty_variant", selected_variant);
+    ffi_options.addOption(bool, "c_abi", true);
+    ffi_mod.addOptions("session_options", ffi_options);
     ffi_mod.addImport("howl_session", ffi_mod);
 
     const ffi_lib = b.addLibrary(.{

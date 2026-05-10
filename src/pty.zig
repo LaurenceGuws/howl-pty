@@ -4,18 +4,18 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const build_options = @import("build_options");
+const session_options = @import("session_options");
 const platform = @import("pty/pty_platform.zig");
 const doubles = @import("pty/pty_test.zig");
 const unix = @import("pty/pty_unix.zig");
 const android = @import("pty/pty_android.zig");
 
-const PtyImpl = switch (build_options.pty_variant) {
+const PtyImpl = switch (session_options.pty_variant) {
     .unix_pty => unix.UnixPty,
     .android_pty => android.AndroidPty,
 };
 
-const selected_pty_class = switch (build_options.pty_variant) {
+const selected_pty_class = switch (session_options.pty_variant) {
     .unix_pty => platform.PtyClass.posix_pty,
     .android_pty => platform.PtyClass.android_pty,
 };
@@ -31,7 +31,7 @@ pub const LaunchConfig = struct {
 };
 
 fn initPtyImpl(allocator: std.mem.Allocator, launch: LaunchConfig) !PtyImpl {
-    return switch (build_options.pty_variant) {
+    return switch (session_options.pty_variant) {
         .unix_pty => PtyImpl.init(allocator, launch.shell_path orelse "/bin/sh", launch.command, launch.start_path),
         .android_pty => PtyImpl.init(allocator, launch.shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), launch.command, launch.start_path),
     };

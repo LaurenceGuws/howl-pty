@@ -1,8 +1,9 @@
 //! Session namespace wrapper for the howl-session module.
 
 const std = @import("std");
+const options = @import("session_options");
 
-pub const c_api = @import("ffi.zig");
+pub const c_api = if (options.c_abi) @import("ffi.zig") else void;
 
 const runtime_mod = @import("session.zig");
 const transport_mod = @import("pty.zig");
