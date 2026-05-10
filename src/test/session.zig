@@ -176,6 +176,41 @@ test "session pumps bounded transport reads into caller sink" {
     try std.testing.expectEqualStrings("f", mem_pty.rx.items);
 }
 
+test "session owns transport pump modes" {
+    const allocator = std.testing.allocator;
+
+    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    defer mem_pty.deinit();
+    var input: [200 * 1024]u8 = undefined;
+    @memset(input[0..], 'x');
+    try mem_pty.rx.appendSlice(allocator, input[0..]);
+
+    var session = try howl_session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 16,
+        .pty = mem_pty.pty(),
+    });
+    defer session.deinit();
+    try session.start();
+
+    const Sink = struct {
+        pub fn onTransportBytes(_: @This(), _: []const u8) void {}
+    };
+    var scratch: [64 * 1024]u8 = undefined;
+
+    const constrained = session.pumpTransportMode(scratch[0..], Sink{}, .constrained);
+    try std.testing.expect(constrained.any_read);
+    try std.testing.expectEqual(@as(usize, 2), constrained.reads);
+    try std.testing.expectEqual(@as(usize, 128 * 1024), constrained.bytes_read);
+
+    const normal = session.pumpTransportMode(scratch[0..], Sink{}, .normal);
+    try std.testing.expect(normal.any_read);
+    try std.testing.expectEqual(@as(usize, 2), normal.reads);
+    try std.testing.expectEqual(@as(usize, 72 * 1024), normal.bytes_read);
+}
+
 test "session restore normalizes active snapshots to stopped" {
     const allocator = std.testing.allocator;
 

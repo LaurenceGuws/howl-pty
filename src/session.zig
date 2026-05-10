@@ -57,6 +57,12 @@ pub const TransportPumpLimits = struct {
     max_bytes: usize,
 };
 
+/// Named transport pump budget selected by the runtime owner.
+pub const TransportPumpMode = enum {
+    normal,
+    constrained,
+};
+
 /// Result of one transport pump pass.
 pub const TransportPumpResult = struct {
     any_read: bool = false,
@@ -71,6 +77,11 @@ pub const OutboundInputPump = struct {
     has_pending: bool = false,
     wait_readable: bool = false,
 };
+
+const normal_transport_reads: usize = 16;
+const normal_transport_bytes: usize = 1024 * 1024;
+const constrained_transport_reads: usize = 2;
+const constrained_transport_bytes: usize = 128 * 1024;
 
 /// Operation counters for conformance/testing.
 pub const Ops = struct {
@@ -344,6 +355,18 @@ pub const Session = struct {
             result.bytes_read += n;
         }
         return result;
+    }
+
+    /// Pump transport reads using the session-owned runtime budget policy.
+    pub fn pumpTransportMode(self: *Session, scratch: []u8, sink: anytype, mode: TransportPumpMode) TransportPumpResult {
+        return self.pumpTransport(scratch, sink, transportPumpLimits(mode));
+    }
+
+    fn transportPumpLimits(mode: TransportPumpMode) TransportPumpLimits {
+        return switch (mode) {
+            .normal => .{ .max_reads = normal_transport_reads, .max_bytes = normal_transport_bytes },
+            .constrained => .{ .max_reads = constrained_transport_reads, .max_bytes = constrained_transport_bytes },
+        };
     }
 
     /// Send control signal to transport child process.

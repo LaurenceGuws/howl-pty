@@ -11,6 +11,7 @@ pub const Session = session.Session;
 pub const Config = session.Config;
 pub const Status = session.Status;
 pub const Snapshot = session.Snapshot;
+pub const TransportPumpMode = session.TransportPumpMode;
 pub const Ops = session.Ops;
 pub const Transport = session.Transport;
 pub const TransportClass = session.TransportClass;
