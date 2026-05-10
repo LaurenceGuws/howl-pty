@@ -79,6 +79,63 @@ test "session preserves remainder after partial transport write" {
     try std.testing.expectEqual(@as(usize, 0), session.pending.items.len);
 }
 
+test "session pumps outbound input and reports readable wait policy" {
+    const allocator = std.testing.allocator;
+
+    var partial_pty = howl_session.testing.Transport.Partial.init(allocator, 3);
+    defer partial_pty.deinit();
+
+    var session = try howl_session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 16,
+        .pty = partial_pty.pty(),
+    });
+    defer session.deinit();
+    try session.start();
+
+    const idle = session.pumpOutboundInput(false);
+    try std.testing.expect(!idle.had_pending);
+    try std.testing.expectEqual(@as(usize, 0), idle.drained);
+    try std.testing.expect(!idle.has_pending);
+    try std.testing.expect(idle.wait_readable);
+
+    try session.publishHostInput("abcdef");
+    const active = session.pumpOutboundInput(false);
+    try std.testing.expect(active.had_pending);
+    try std.testing.expectEqual(@as(usize, 3), active.drained);
+    try std.testing.expect(active.has_pending);
+    try std.testing.expect(!active.wait_readable);
+    try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
+    try std.testing.expectEqualStrings("def", session.pending.items);
+}
+
+test "session publishes and pumps host input for thread backlog" {
+    const allocator = std.testing.allocator;
+
+    var partial_pty = howl_session.testing.Transport.Partial.init(allocator, 2);
+    defer partial_pty.deinit();
+
+    var session = try howl_session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 16,
+        .pty = partial_pty.pty(),
+    });
+    defer session.deinit();
+    try session.start();
+
+    const pumped = try session.publishHostInputAndPump("hello");
+    try std.testing.expect(pumped.had_pending);
+    try std.testing.expectEqual(@as(usize, 2), pumped.drained);
+    try std.testing.expect(pumped.has_pending);
+    try std.testing.expect(!pumped.wait_readable);
+    try std.testing.expectEqualStrings("he", partial_pty.tx.items);
+    try std.testing.expectEqualStrings("llo", session.pending.items);
+}
+
 test "session pumps bounded transport reads into caller sink" {
     const allocator = std.testing.allocator;
 

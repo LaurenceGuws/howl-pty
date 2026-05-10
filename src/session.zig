@@ -1,5 +1,5 @@
 //! Responsibility: session queue/lifecycle boundary.
-//! Ownership: pending input queue, pty lifecycle, resize tracking.
+//! Ownership: pending input queue, pty lifecycle, outbound pump policy, resize tracking.
 //! Reason: keep session focused on I/O orchestration only.
 
 const std = @import("std");
@@ -42,6 +42,14 @@ pub const TransportPumpResult = struct {
     any_read: bool = false,
     reads: usize = 0,
     bytes_read: usize = 0,
+};
+
+/// Result of one outbound input pump pass.
+pub const OutboundInputPump = struct {
+    had_pending: bool = false,
+    drained: usize = 0,
+    has_pending: bool = false,
+    wait_readable: bool = false,
 };
 
 /// Operation counters for conformance/testing.
@@ -181,9 +189,33 @@ pub const Session = struct {
         return drained;
     }
 
+    /// Flush queued outbound input and report runtime wait/backlog policy.
+    pub fn pumpOutboundInput(self: *Session, woke: bool) OutboundInputPump {
+        const had_pending = self.hasPendingOutboundInput();
+        const drained = self.flushOutboundInput();
+        const has_pending = self.hasPendingOutboundInput();
+        return .{
+            .had_pending = had_pending,
+            .drained = drained,
+            .has_pending = has_pending,
+            .wait_readable = !woke and !had_pending and !has_pending,
+        };
+    }
+
+    /// Queue host input, immediately pump it toward the transport, and report backlog.
+    pub fn publishHostInputAndPump(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!OutboundInputPump {
+        try self.publishHostInput(bytes);
+        return self.pumpOutboundInput(true);
+    }
+
     /// Report whether host input still waits for transport write capacity.
     pub fn hasPendingOutboundInput(self: *const Session) bool {
         return self.pending.items.len > 0;
+    }
+
+    /// Report whether outbound input still needs another transport pump pass.
+    pub fn hasOutboundInputBacklog(self: *const Session) bool {
+        return self.hasPendingOutboundInput();
     }
 
     /// Wait for transport readability.
@@ -198,6 +230,12 @@ pub const Session = struct {
             };
         }
         return false;
+    }
+
+    /// Block for readability only when the preceding outbound pump was idle.
+    pub fn waitReadableAfterOutbound(self: *Session, outbound: OutboundInputPump, timeout_ms: i32) bool {
+        if (!outbound.wait_readable) return true;
+        return self.waitReadable(timeout_ms);
     }
 
     /// Read transport bytes into caller buffer.
