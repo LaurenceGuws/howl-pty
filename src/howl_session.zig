@@ -3,7 +3,7 @@
 const lib = @This();
 const std = @import("std");
 
-const session = @import("session/main.zig");
+const session = @import("session_namespace.zig");
 const ffi = session.c_api;
 
 pub const Ffi = ffi;

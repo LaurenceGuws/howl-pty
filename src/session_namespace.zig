@@ -2,10 +2,10 @@
 
 const std = @import("std");
 
-pub const c_api = @import("../ffi.zig");
+pub const c_api = @import("ffi.zig");
 
-const runtime_mod = @import("../session.zig");
-const transport_mod = @import("../pty.zig");
+const runtime_mod = @import("session.zig");
+const transport_mod = @import("pty.zig");
 
 pub const Session = runtime_mod.Session;
 pub const Config = runtime_mod.Config;
