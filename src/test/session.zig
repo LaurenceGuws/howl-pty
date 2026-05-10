@@ -8,7 +8,7 @@ const howl_session = @import("howl_session");
 test "howl_session root methods remain available" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.MemPty.init(allocator);
+    var mem_pty = howl_session.TestPty.Mem.init(allocator);
     defer mem_pty.deinit();
 
     var session = try howl_session.Session.init(.{
@@ -29,7 +29,7 @@ test "howl_session root methods remain available" {
 test "session flushes outbound input deterministically" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.MemPty.init(allocator);
+    var mem_pty = howl_session.TestPty.Mem.init(allocator);
     defer mem_pty.deinit();
 
     var session = try howl_session.Session.init(.{
@@ -55,7 +55,7 @@ test "session flushes outbound input deterministically" {
 test "session preserves remainder after partial transport write" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_session.PartialPty.init(allocator, 3);
+    var partial_pty = howl_session.TestPty.Partial.init(allocator, 3);
     defer partial_pty.deinit();
 
     var session = try howl_session.Session.init(.{
@@ -107,7 +107,7 @@ test "session restore normalizes active snapshots to stopped" {
 test "session publishes typed control signals through the pty boundary" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.MemPty.init(allocator);
+    var mem_pty = howl_session.TestPty.Mem.init(allocator);
     defer mem_pty.deinit();
 
     var session = try howl_session.Session.init(.{
@@ -126,9 +126,9 @@ test "session publishes typed control signals through the pty boundary" {
 test "session transport attachment is owned by session lifecycle" {
     const allocator = std.testing.allocator;
 
-    var first = howl_session.MemPty.init(allocator);
+    var first = howl_session.TestPty.Mem.init(allocator);
     defer first.deinit();
-    var second = howl_session.MemPty.init(allocator);
+    var second = howl_session.TestPty.Mem.init(allocator);
     defer second.deinit();
 
     var session = try howl_session.Session.init(.{

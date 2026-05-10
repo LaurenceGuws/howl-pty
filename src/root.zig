@@ -31,10 +31,12 @@ pub const PtyLaunchConfig = PtyApi.LaunchConfig;
 /// Build-selected PTY class value.
 pub const pty_class = PtyApi.pty_class;
 
-/// Test/dummy PTY variants.
-pub const MemPty = PtyApi.Mem;
-pub const PartialPty = PtyApi.Partial;
-pub const FailPty = PtyApi.Fail;
+/// PTY variants for tests and deterministic transport assertions.
+pub const TestPty = struct {
+    pub const Mem = PtyApi.Mem;
+    pub const Partial = PtyApi.Partial;
+    pub const Fail = PtyApi.Fail;
+};
 
 /// Create build-selected PTY transport.
 pub fn initPty(allocator: @import("std").mem.Allocator, launch: PtyLaunchConfig) !OwnedPty {
