@@ -2,6 +2,7 @@
 //! Ownership: package boundary for session/pty orchestration.
 //! Reason: root.zig is already the package namespace.
 
+const std = @import("std");
 const session_mod = @import("session.zig");
 const pty_mod = @import("pty.zig");
 const SessionApi = session_mod;
@@ -46,4 +47,5 @@ pub fn initPty(allocator: @import("std").mem.Allocator, launch: PtyLaunchConfig)
 test {
     _ = @import("test/session.zig");
     _ = @import("test/pty.zig");
+    std.testing.refAllDecls(@This());
 }
