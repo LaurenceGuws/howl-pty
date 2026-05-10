@@ -8,20 +8,20 @@ const howl_session = @import("howl_session");
 test "pty control signals stay typed across the facade" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.TestPty.Mem.init(allocator);
+    var mem_pty = howl_session.testing.Pty.Mem.init(allocator);
     defer mem_pty.deinit();
 
     try mem_pty.pty().start();
     defer mem_pty.pty().stop();
 
     mem_pty.pty().control(.terminate);
-    try std.testing.expectEqual(howl_session.ControlSignal.terminate, mem_pty.last_signal.?);
+    try std.testing.expectEqual(howl_session.pty.ControlSignal.terminate, mem_pty.last_signal.?);
 }
 
 test "pty doubles share resize and write semantics through the interface" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.TestPty.Mem.init(allocator);
+    var mem_pty = howl_session.testing.Pty.Mem.init(allocator);
     defer mem_pty.deinit();
     try mem_pty.pty().start();
     defer mem_pty.pty().stop();
@@ -38,7 +38,7 @@ test "pty doubles share resize and write semantics through the interface" {
 test "partial pty preserves partial-write semantics through the interface" {
     const allocator = std.testing.allocator;
 
-    var partial = howl_session.TestPty.Partial.init(allocator, 2);
+    var partial = howl_session.testing.Pty.Partial.init(allocator, 2);
     defer partial.deinit();
     try partial.pty().start();
     defer partial.pty().stop();
@@ -48,7 +48,7 @@ test "partial pty preserves partial-write semantics through the interface" {
 }
 
 test "fail pty surfaces transport errors instead of swallowing them" {
-    var fail_pty = howl_session.TestPty.Fail.init();
+    var fail_pty = howl_session.testing.Pty.Fail.init();
     defer fail_pty.deinit();
     var buf = [_]u8{0};
 
