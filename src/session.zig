@@ -195,6 +195,11 @@ pub const Session = struct {
         self.status = .stopped;
     }
 
+    /// Report whether session transport lifecycle is active.
+    pub fn isActive(self: *const Session) bool {
+        return self.status == .active;
+    }
+
     fn bindOwnedTransport(self: *Session) void {
         if (self.pty != null) return;
         if (self.owned_transport) |*transport| self.pty = transport.pty();

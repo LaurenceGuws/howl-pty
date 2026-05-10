@@ -42,6 +42,7 @@ test "session flushes outbound input deterministically" {
     defer session.deinit();
 
     try session.start();
+    try std.testing.expect(session.isActive());
     try session.publishHostInput("ping");
 
     const drained = session.flushOutboundInput();
@@ -50,6 +51,8 @@ test "session flushes outbound input deterministically" {
     try std.testing.expectEqual(@as(u64, 4), session.ops.bytes_fed);
     try std.testing.expectEqual(@as(u64, 4), session.ops.bytes_applied);
     try std.testing.expectEqual(@as(usize, 0), session.pending.items.len);
+    session.stop();
+    try std.testing.expect(!session.isActive());
 }
 
 test "session preserves remainder after partial transport write" {
