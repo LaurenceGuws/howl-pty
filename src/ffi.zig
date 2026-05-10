@@ -2,17 +2,18 @@
 //! Ownership: session status and control-signal ABI contracts.
 //! Reason: keep C consumers on typed session-owned values without exposing PTY internals.
 
-const howl_session = @import("howl_session.zig");
+const pty = @import("pty.zig");
+const session = @import("session.zig");
 
 fn boolInt(value: bool) c_int {
     return if (value) 1 else 0;
 }
 
-fn statusByte(status: howl_session.Status) u8 {
+fn statusByte(status: session.Status) u8 {
     return @intFromEnum(status);
 }
 
-fn statusFromByte(status: u8) ?howl_session.Status {
+fn statusFromByte(status: u8) ?session.Status {
     return switch (status) {
         statusByte(.idle) => .idle,
         statusByte(.active) => .active,
@@ -43,26 +44,26 @@ pub fn statusIsActive(status: u8) callconv(.c) c_int {
 }
 
 pub fn controlSignalHangup() callconv(.c) u8 {
-    return howl_session.ControlSignal.hangup.raw();
+    return pty.ControlSignal.hangup.raw();
 }
 
 pub fn controlSignalInterrupt() callconv(.c) u8 {
-    return howl_session.ControlSignal.interrupt.raw();
+    return pty.ControlSignal.interrupt.raw();
 }
 
 pub fn controlSignalResizeNotify() callconv(.c) u8 {
-    return howl_session.ControlSignal.resize_notify.raw();
+    return pty.ControlSignal.resize_notify.raw();
 }
 
 pub fn controlSignalKill() callconv(.c) u8 {
-    return howl_session.ControlSignal.kill.raw();
+    return pty.ControlSignal.kill.raw();
 }
 
 pub fn controlSignalTerminate() callconv(.c) u8 {
-    return howl_session.ControlSignal.terminate.raw();
+    return pty.ControlSignal.terminate.raw();
 }
 
 pub fn controlSignalIsValid(signal: u8) callconv(.c) c_int {
-    _ = howl_session.ControlSignal.fromRaw(signal) catch return 0;
+    _ = pty.ControlSignal.fromRaw(signal) catch return 0;
     return 1;
 }
