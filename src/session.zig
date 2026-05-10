@@ -31,6 +31,19 @@ pub const Snapshot = struct {
     resize_count: u32,
 };
 
+/// Bounds for one nonblocking transport pump pass.
+pub const TransportPumpLimits = struct {
+    max_reads: usize,
+    max_bytes: usize,
+};
+
+/// Result of one transport pump pass.
+pub const TransportPumpResult = struct {
+    any_read: bool = false,
+    reads: usize = 0,
+    bytes_read: usize = 0,
+};
+
 /// Operation counters for conformance/testing.
 pub const Ops = struct {
     start_attempts: u32,
@@ -211,6 +224,22 @@ pub const Session = struct {
         if (n == 0) return 0;
         sink.onTransportBytes(scratch[0..n]);
         return n;
+    }
+
+    /// Pump bounded transport reads into the caller-owned sink.
+    pub fn pumpTransport(self: *Session, scratch: []u8, sink: anytype, limits: TransportPumpLimits) TransportPumpResult {
+        var result = TransportPumpResult{};
+        if (scratch.len == 0 or limits.max_reads == 0 or limits.max_bytes == 0) return result;
+        while (result.reads < limits.max_reads and result.bytes_read < limits.max_bytes) {
+            const remaining = limits.max_bytes - result.bytes_read;
+            const read_buf = scratch[0..@min(scratch.len, remaining)];
+            const n = self.ingestTransport(read_buf, sink);
+            if (n == 0) break;
+            result.any_read = true;
+            result.reads += 1;
+            result.bytes_read += n;
+        }
+        return result;
     }
 
     /// Send control signal to transport child process.

@@ -79,6 +79,43 @@ test "session preserves remainder after partial transport write" {
     try std.testing.expectEqual(@as(usize, 0), session.pending.items.len);
 }
 
+test "session pumps bounded transport reads into caller sink" {
+    const allocator = std.testing.allocator;
+
+    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    defer mem_pty.deinit();
+    try mem_pty.rx.appendSlice(allocator, "abcdef");
+
+    var session = try howl_session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 16,
+        .pty = mem_pty.pty(),
+    });
+    defer session.deinit();
+    try session.start();
+
+    const Sink = struct {
+        out: *std.ArrayListUnmanaged(u8),
+        allocator: std.mem.Allocator,
+
+        pub fn onTransportBytes(self: @This(), bytes: []const u8) void {
+            self.out.appendSlice(self.allocator, bytes) catch unreachable;
+        }
+    };
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    defer out.deinit(allocator);
+    var scratch: [3]u8 = undefined;
+
+    const result = session.pumpTransport(scratch[0..], Sink{ .out = &out, .allocator = allocator }, .{ .max_reads = 2, .max_bytes = 5 });
+    try std.testing.expect(result.any_read);
+    try std.testing.expectEqual(@as(usize, 2), result.reads);
+    try std.testing.expectEqual(@as(usize, 5), result.bytes_read);
+    try std.testing.expectEqualStrings("abcde", out.items);
+    try std.testing.expectEqualStrings("f", mem_pty.rx.items);
+}
+
 test "session restore normalizes active snapshots to stopped" {
     const allocator = std.testing.allocator;
 

@@ -11,6 +11,8 @@ pub const Session = runtime_mod.Session;
 pub const Config = runtime_mod.Config;
 pub const Status = runtime_mod.Status;
 pub const Snapshot = runtime_mod.Snapshot;
+pub const TransportPumpLimits = runtime_mod.TransportPumpLimits;
+pub const TransportPumpResult = runtime_mod.TransportPumpResult;
 pub const Ops = runtime_mod.Ops;
 
 pub const Transport = transport_mod.Pty;
@@ -25,6 +27,8 @@ pub const runtime = struct {
     pub const Config = runtime_mod.Config;
     pub const Status = runtime_mod.Status;
     pub const Snapshot = runtime_mod.Snapshot;
+    pub const TransportPumpLimits = runtime_mod.TransportPumpLimits;
+    pub const TransportPumpResult = runtime_mod.TransportPumpResult;
     pub const Ops = runtime_mod.Ops;
 };
 
