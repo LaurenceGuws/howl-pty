@@ -241,3 +241,17 @@ test "session transport attachment is owned by session lifecycle" {
     try session.detachPty();
     try std.testing.expectError(error.TransportUnavailable, session.publishControlSignal(.terminate));
 }
+
+test "session constructs and owns build selected pty transport" {
+    var session = try howl_session.Session.initPty(.{
+        .allocator = std.testing.allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
+        .launch = .{ .shell_path = "/bin/sh" },
+    });
+    defer session.deinit();
+
+    try std.testing.expectEqual(howl_session.Status.idle, session.snapshot().status);
+    try std.testing.expect(!session.hasOutboundInputBacklog());
+}

@@ -9,6 +9,8 @@ const transport_mod = @import("pty.zig");
 
 pub const Session = runtime_mod.Session;
 pub const Config = runtime_mod.Config;
+pub const OwnedTransportConfig = runtime_mod.OwnedTransportConfig;
+pub const PtyConfig = runtime_mod.PtyConfig;
 pub const Status = runtime_mod.Status;
 pub const Snapshot = runtime_mod.Snapshot;
 pub const TransportPumpLimits = runtime_mod.TransportPumpLimits;
@@ -26,6 +28,8 @@ pub const transport_class = transport_mod.pty_class;
 pub const runtime = struct {
     pub const Session = runtime_mod.Session;
     pub const Config = runtime_mod.Config;
+    pub const OwnedTransportConfig = runtime_mod.OwnedTransportConfig;
+    pub const PtyConfig = runtime_mod.PtyConfig;
     pub const Status = runtime_mod.Status;
     pub const Snapshot = runtime_mod.Snapshot;
     pub const TransportPumpLimits = runtime_mod.TransportPumpLimits;

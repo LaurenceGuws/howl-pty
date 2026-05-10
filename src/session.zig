@@ -1,5 +1,5 @@
 //! Responsibility: session queue/lifecycle boundary.
-//! Ownership: pending input queue, pty lifecycle, outbound pump policy, resize tracking.
+//! Ownership: pending input queue, owned pty lifecycle, outbound pump policy, resize tracking.
 //! Reason: keep session focused on I/O orchestration only.
 
 const std = @import("std");
@@ -8,6 +8,8 @@ const pty_api = @import("pty.zig");
 /// Canonical session owner surface.
 pub const PtyClass = pty_api.PtyClass;
 pub const Pty = pty_api.Pty;
+pub const OwnedTransport = pty_api.OwnedPty;
+pub const LaunchConfig = pty_api.LaunchConfig;
 pub const ControlSignal = pty_api.ControlSignal;
 /// Session initialization config.
 pub const Config = struct {
@@ -16,6 +18,24 @@ pub const Config = struct {
     rows: u16,
     pending_capacity: usize,
     pty: ?Pty = null,
+};
+
+/// Session config for an already-created owned transport.
+pub const OwnedTransportConfig = struct {
+    allocator: std.mem.Allocator,
+    cols: u16,
+    rows: u16,
+    pending_capacity: usize,
+    transport: OwnedTransport,
+};
+
+/// Session config for a build-selected PTY launch.
+pub const PtyConfig = struct {
+    allocator: std.mem.Allocator,
+    cols: u16,
+    rows: u16,
+    pending_capacity: usize,
+    launch: LaunchConfig = .{},
 };
 /// Session lifecycle status.
 pub const Status = enum(u8) {
@@ -79,6 +99,7 @@ pub const Session = struct {
     pending: std.ArrayListUnmanaged(u8),
     pending_capacity: usize,
     pty: ?Pty,
+    owned_transport: ?OwnedTransport,
     resize_count: u32,
     ops: Ops,
 
@@ -94,14 +115,43 @@ pub const Session = struct {
             .pending = .empty,
             .pending_capacity = config.pending_capacity,
             .pty = config.pty,
+            .owned_transport = null,
             .resize_count = 0,
             .ops = std.mem.zeroes(Ops),
         };
     }
 
-    /// Release queue memory.
+    /// Initialize a session that owns the supplied transport.
+    pub fn initOwnedTransport(config: OwnedTransportConfig) !Session {
+        var transport = config.transport;
+        errdefer transport.deinit();
+        var session = try Session.init(.{
+            .allocator = config.allocator,
+            .cols = config.cols,
+            .rows = config.rows,
+            .pending_capacity = config.pending_capacity,
+        });
+        session.owned_transport = transport;
+        return session;
+    }
+
+    /// Initialize a session that owns a build-selected PTY transport.
+    pub fn initPty(config: PtyConfig) !Session {
+        const transport = try pty_api.initPty(config.allocator, config.launch);
+        return try Session.initOwnedTransport(.{
+            .allocator = config.allocator,
+            .cols = config.cols,
+            .rows = config.rows,
+            .pending_capacity = config.pending_capacity,
+            .transport = transport,
+        });
+    }
+
+    /// Release queue and owned transport memory.
     pub fn deinit(self: *Session) void {
+        if (self.status == .active) self.stop();
         self.pending.deinit(self.allocator);
+        if (self.owned_transport) |*transport| transport.deinit();
         self.* = undefined;
     }
 
@@ -109,6 +159,7 @@ pub const Session = struct {
     pub fn start(self: *Session) !void {
         self.ops.start_attempts += 1;
         if (self.status == .active) return error.AlreadyStarted;
+        self.bindOwnedTransport();
         if (self.pty) |t| t.start() catch |err| {
             self.ops.start_failures += 1;
             std.log.err("SES,event=startErr,error={s}", .{@errorName(err)});
@@ -121,12 +172,16 @@ pub const Session = struct {
     /// Attach or replace the session transport while inactive.
     pub fn attachPty(self: *Session, pty: Pty) error{SessionActive}!void {
         if (self.status == .active) return error.SessionActive;
+        if (self.owned_transport) |*transport| transport.deinit();
+        self.owned_transport = null;
         self.pty = pty;
     }
 
     /// Detach the current transport while inactive.
     pub fn detachPty(self: *Session) error{SessionActive}!void {
         if (self.status == .active) return error.SessionActive;
+        if (self.owned_transport) |*transport| transport.deinit();
+        self.owned_transport = null;
         self.pty = null;
     }
 
@@ -136,7 +191,13 @@ pub const Session = struct {
         if (self.status == .active) {
             if (self.pty) |t| t.stop();
         }
+        if (self.owned_transport != null) self.pty = null;
         self.status = .stopped;
+    }
+
+    fn bindOwnedTransport(self: *Session) void {
+        if (self.pty != null) return;
+        if (self.owned_transport) |*transport| self.pty = transport.pty();
     }
 
     /// Publish host input bytes into the pending outbound queue.
