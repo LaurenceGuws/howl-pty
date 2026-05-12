@@ -119,7 +119,7 @@ pub const UnixPty = struct {
         }
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
@@ -167,15 +167,26 @@ pub const UnixPty = struct {
             .{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
             .{ .fd = self.wake_read_fd orelse return error.NotStarted, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
         };
-        const poll_timeout: i32 = if (timeout_ms < 0) -1 else 0;
+        const poll_timeout: i32 = if (timeout_ms < 0) -1 else timeout_ms;
         const ready = try posix.poll(&fds, poll_timeout);
         if (ready <= 0) return false;
-        if ((fds[1].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0) return false;
+        if ((fds[1].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0) {
+            drainWakePipe(self);
+            return false;
+        }
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
             self.refreshChildState();
             if (!self.started) return error.NotStarted;
         }
         return (fds[0].revents & posix.POLL.IN) != 0;
+    }
+    fn kickWaitImpl(ptr: *anyopaque) void {
+        const self: *UnixPty = @ptrCast(@alignCast(ptr));
+        if (!self.started) return;
+        if (self.wake_write_fd) |fd| {
+            var byte: [1]u8 = .{1};
+            _ = c.write(fd, &byte, 1);
+        }
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
@@ -189,5 +200,15 @@ pub const UnixPty = struct {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
         if (self.child_pid) |pid| common.sendSignal(pid, signal);
+    }
+
+    fn drainWakePipe(self: *UnixPty) void {
+        const fd = self.wake_read_fd orelse return;
+        var buf: [32]u8 = undefined;
+        while (true) {
+            const n = c.read(fd, &buf, buf.len);
+            if (n <= 0) return;
+            if (@as(usize, @intCast(n)) < buf.len) return;
+        }
     }
 };

@@ -113,7 +113,7 @@ pub const AndroidPty = struct {
         }
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         try self.startInternal();
@@ -158,7 +158,7 @@ pub const AndroidPty = struct {
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var fds = [_]posix.pollfd{.{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 }};
-        const poll_timeout: i32 = if (timeout_ms < 0) -1 else 0;
+        const poll_timeout: i32 = if (timeout_ms < 0) -1 else timeout_ms;
         const ready = try posix.poll(&fds, poll_timeout);
         if (ready <= 0) return false;
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
@@ -166,6 +166,9 @@ pub const AndroidPty = struct {
             if (!self.started) return error.NotStarted;
         }
         return (fds[0].revents & posix.POLL.IN) != 0;
+    }
+    fn kickWaitImpl(ptr: *anyopaque) void {
+        _ = ptr;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));

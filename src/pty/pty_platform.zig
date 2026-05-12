@@ -34,6 +34,7 @@ pub const Pty = struct {
         write: *const fn (ptr: *anyopaque, bytes: []const u8) anyerror!usize,
         read: *const fn (ptr: *anyopaque, buf: []u8) anyerror!usize,
         wait_readable: *const fn (ptr: *anyopaque, timeout_ms: i32) anyerror!bool,
+        kick_wait: *const fn (ptr: *anyopaque) void,
         resize: *const fn (ptr: *anyopaque, cols: u16, rows: u16) anyerror!void,
         control: *const fn (ptr: *anyopaque, signal: ControlSignal) void,
     };
@@ -52,6 +53,9 @@ pub const Pty = struct {
     }
     pub fn waitReadable(self: Pty, timeout_ms: i32) anyerror!bool {
         return self.vtable.wait_readable(self.ptr, timeout_ms);
+    }
+    pub fn kickWait(self: Pty) void {
+        self.vtable.kick_wait(self.ptr);
     }
     pub fn resize(self: Pty, cols: u16, rows: u16) anyerror!void {
         return self.vtable.resize(self.ptr, cols, rows);

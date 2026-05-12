@@ -282,7 +282,9 @@ pub const Session = struct {
     /// Queue host input, immediately pump it toward the transport, and report backlog.
     pub fn publishHostInputAndPump(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!OutboundInputPump {
         try self.publishHostInput(bytes);
-        return self.pumpOutboundInput(true);
+        const outbound = self.pumpOutboundInput(true);
+        if (outbound.has_pending) self.kickTransportWait();
+        return outbound;
     }
 
     /// Report whether host input still waits for transport write capacity.
@@ -293,6 +295,10 @@ pub const Session = struct {
     /// Report whether outbound input still needs another transport pump pass.
     pub fn hasOutboundInputBacklog(self: *const Session) bool {
         return self.hasPendingOutboundInput();
+    }
+
+    pub fn kickTransportWait(self: *Session) void {
+        if (self.pty) |t| t.kickWait();
     }
 
     /// Wait for transport readability.

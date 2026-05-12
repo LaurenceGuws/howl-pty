@@ -27,7 +27,7 @@ pub const Mem = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
@@ -60,6 +60,9 @@ pub const Mem = struct {
         _ = timeout_ms;
         return self.rx.items.len > 0;
     }
+    fn kickWaitImpl(ptr: *anyopaque) void {
+        _ = ptr;
+    }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
@@ -89,7 +92,7 @@ pub const Partial = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
@@ -116,6 +119,9 @@ pub const Partial = struct {
         _ = timeout_ms;
         return false;
     }
+    fn kickWaitImpl(ptr: *anyopaque) void {
+        _ = ptr;
+    }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         _ = ptr;
         _ = cols;
@@ -138,7 +144,7 @@ pub const Fail = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .resize = resizeImpl, .control = controlImpl };
+    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
     fn startImpl(ptr: *anyopaque) anyerror!void {
         _ = ptr;
         return error.Failed;
@@ -160,6 +166,9 @@ pub const Fail = struct {
         _ = ptr;
         _ = timeout_ms;
         return error.Failed;
+    }
+    fn kickWaitImpl(ptr: *anyopaque) void {
+        _ = ptr;
     }
     fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         _ = ptr;
