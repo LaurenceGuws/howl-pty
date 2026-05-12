@@ -236,32 +236,7 @@ pub const Session = struct {
     /// This call is non-throwing: transport write failures are reflected in `ops`.
     pub fn flushOutboundInput(self: *Session) usize {
         self.ops.apply_calls += 1;
-        const n = self.pending.items.len;
-        var drained: usize = 0;
-
-        if (n > 0) {
-            if (self.pty) |t| {
-                const written = t.write(self.pending.items) catch |err| switch (err) {
-                    error.WouldBlock, error.Interrupted => 0,
-                    else => {
-                        self.ops.apply_transport_write_errors += 1;
-                        self.status = .stopped;
-                        return 0;
-                    },
-                };
-                drained = written;
-                if (written < n) {
-                    std.mem.copyForwards(u8, self.pending.items[0 .. n - written], self.pending.items[written..n]);
-                    self.pending.shrinkRetainingCapacity(n - written);
-                } else {
-                    self.pending.clearRetainingCapacity();
-                }
-            } else {
-                drained = n;
-                self.pending.clearRetainingCapacity();
-            }
-        }
-
+        const drained = flushOutboundPhase(self);
         self.ops.bytes_applied += drained;
         return drained;
     }
@@ -303,16 +278,8 @@ pub const Session = struct {
 
     /// Wait for transport readability.
     pub fn waitReadable(self: *Session, timeout_ms: i32) bool {
-        if (self.pty) |t| {
-            return t.waitReadable(timeout_ms) catch |err| switch (err) {
-                error.WouldBlock, error.Interrupted => false,
-                else => {
-                    self.status = .stopped;
-                    return false;
-                },
-            };
-        }
-        return false;
+        const t = self.pty orelse return false;
+        return t.waitReadable(timeout_ms) catch |err| handleWaitError(self, err);
     }
 
     /// Block for readability only when the preceding outbound pump was idle.
@@ -323,20 +290,9 @@ pub const Session = struct {
 
     /// Read transport bytes into caller buffer.
     pub fn readTransport(self: *Session, buf: []u8) usize {
-        if (self.pty) |t| {
-            return t.read(buf) catch |err| switch (err) {
-                error.WouldBlock, error.Interrupted => 0,
-                error.NotStarted => blk: {
-                    self.status = .stopped;
-                    break :blk 0;
-                },
-                else => blk: {
-                    self.status = .stopped;
-                    break :blk 0;
-                },
-            };
-        }
-        return 0;
+        if (buf.len == 0) return 0;
+        const t = self.pty orelse return 0;
+        return t.read(buf) catch |err| handleReadError(self, err);
     }
 
     /// Read one transport chunk and deliver it to sink.
@@ -372,6 +328,68 @@ pub const Session = struct {
         return switch (mode) {
             .normal => .{ .max_reads = normal_transport_reads, .max_bytes = normal_transport_bytes },
             .constrained => .{ .max_reads = constrained_transport_reads, .max_bytes = constrained_transport_bytes },
+        };
+    }
+
+    fn flushOutboundPhase(self: *Session) usize {
+        const pending_len = self.pending.items.len;
+        if (pending_len == 0) return 0;
+        if (self.pty) |t| return flushOutboundToTransport(self, t, pending_len);
+        self.pending.clearRetainingCapacity();
+        return pending_len;
+    }
+
+    fn flushOutboundToTransport(self: *Session, t: Pty, pending_len: usize) usize {
+        std.debug.assert(pending_len > 0);
+        const written = t.write(self.pending.items) catch |err| return handleWriteError(self, err);
+        std.debug.assert(written <= pending_len);
+        trimPendingPrefix(self, written, pending_len);
+        return written;
+    }
+
+    fn trimPendingPrefix(self: *Session, drained: usize, pending_len: usize) void {
+        std.debug.assert(drained <= pending_len);
+        if (drained == pending_len) {
+            self.pending.clearRetainingCapacity();
+            return;
+        }
+        if (drained == 0) return;
+        std.mem.copyForwards(u8, self.pending.items[0 .. pending_len - drained], self.pending.items[drained..pending_len]);
+        self.pending.shrinkRetainingCapacity(pending_len - drained);
+    }
+
+    fn handleWriteError(self: *Session, err: anyerror) usize {
+        return switch (err) {
+            error.WouldBlock, error.Interrupted => 0,
+            else => {
+                self.ops.apply_transport_write_errors += 1;
+                self.status = .stopped;
+                return 0;
+            },
+        };
+    }
+
+    fn handleWaitError(self: *Session, err: anyerror) bool {
+        return switch (err) {
+            error.WouldBlock, error.Interrupted => false,
+            else => {
+                self.status = .stopped;
+                return false;
+            },
+        };
+    }
+
+    fn handleReadError(self: *Session, err: anyerror) usize {
+        return switch (err) {
+            error.WouldBlock, error.Interrupted => 0,
+            error.NotStarted => {
+                self.status = .stopped;
+                return 0;
+            },
+            else => {
+                self.status = .stopped;
+                return 0;
+            },
         };
     }
 
