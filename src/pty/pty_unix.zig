@@ -112,10 +112,7 @@ pub const UnixPty = struct {
         var status: c_int = 0;
         const res = c.waitpid(pid, &status, c.WNOHANG);
         if (res == pid) {
-            if (self.master_fd) |fd| _ = c.close(@intCast(fd));
-            self.master_fd = null;
             self.child_pid = null;
-            self.started = false;
         }
     }
 
