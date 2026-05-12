@@ -5,7 +5,7 @@
 const pty = @import("pty.zig");
 const session = @import("session.zig");
 
-fn boolInt(value: bool) c_int {
+fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
 
@@ -34,13 +34,13 @@ pub fn statusStopped() callconv(.c) u8 {
     return statusByte(.stopped);
 }
 
-pub fn statusIsValid(status: u8) callconv(.c) c_int {
-    return boolInt(statusFromByte(status) != null);
+pub fn statusIsValid(status: u8) callconv(.c) u8 {
+    return boolByte(statusFromByte(status) != null);
 }
 
-pub fn statusIsActive(status: u8) callconv(.c) c_int {
+pub fn statusIsActive(status: u8) callconv(.c) u8 {
     const typed = statusFromByte(status) orelse return 0;
-    return boolInt(typed == .active);
+    return boolByte(typed == .active);
 }
 
 pub fn controlSignalHangup() callconv(.c) u8 {
@@ -63,7 +63,27 @@ pub fn controlSignalTerminate() callconv(.c) u8 {
     return pty.ControlSignal.terminate.raw();
 }
 
-pub fn controlSignalIsValid(signal: u8) callconv(.c) c_int {
+pub fn controlSignalIsValid(signal: u8) callconv(.c) u8 {
     _ = pty.ControlSignal.fromRaw(signal) catch return 0;
     return 1;
+}
+
+test "session ffi status surface proves positive and negative space" {
+    try @import("std").testing.expectEqual(@as(u8, @intFromEnum(session.Status.idle)), statusIdle());
+    try @import("std").testing.expectEqual(@as(u8, @intFromEnum(session.Status.active)), statusActive());
+    try @import("std").testing.expectEqual(@as(u8, @intFromEnum(session.Status.stopped)), statusStopped());
+    try @import("std").testing.expectEqual(@as(u8, 1), statusIsValid(statusIdle()));
+    try @import("std").testing.expectEqual(@as(u8, 1), statusIsActive(statusActive()));
+    try @import("std").testing.expectEqual(@as(u8, 0), statusIsActive(statusStopped()));
+    try @import("std").testing.expectEqual(@as(u8, 0), statusIsValid(255));
+}
+
+test "session ffi control-signal surface proves positive and negative space" {
+    try @import("std").testing.expectEqual(pty.ControlSignal.hangup.raw(), controlSignalHangup());
+    try @import("std").testing.expectEqual(pty.ControlSignal.interrupt.raw(), controlSignalInterrupt());
+    try @import("std").testing.expectEqual(pty.ControlSignal.resize_notify.raw(), controlSignalResizeNotify());
+    try @import("std").testing.expectEqual(pty.ControlSignal.kill.raw(), controlSignalKill());
+    try @import("std").testing.expectEqual(pty.ControlSignal.terminate.raw(), controlSignalTerminate());
+    try @import("std").testing.expectEqual(@as(u8, 1), controlSignalIsValid(controlSignalTerminate()));
+    try @import("std").testing.expectEqual(@as(u8, 0), controlSignalIsValid(0));
 }

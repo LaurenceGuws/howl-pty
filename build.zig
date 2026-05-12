@@ -68,4 +68,5 @@ pub fn build(b: *std.Build) void {
     const ffi_build_step = b.step("ffi:build", "Build the howl-session C FFI library");
     ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
     b.installArtifact(ffi_lib);
+    b.installFile("include/howl_session.h", "include/howl_session.h");
 }

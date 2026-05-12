@@ -7,6 +7,7 @@ const session = @import("session_namespace.zig");
 const ffi = session.c_api;
 
 pub const Ffi = ffi;
+pub const C = ffi;
 pub const Session = session.Session;
 pub const Config = session.Config;
 pub const Status = session.Status;
