@@ -3,13 +3,13 @@
 Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 
 ## Purpose
-`howl-pty` owns terminal child transport orchestration around a PTY boundary.
+`howl-pty` owns PTY-backed child transport orchestration.
 
 It does not model terminal semantics. It owns queueing, transport start/stop, transport reads/writes, resize propagation, and transport selection.
 
 ## Public Surface
 - Shipped contract: `include/howl_pty.h` and `howl_pty_*` exported symbols.
-- Public ABI root: opaque session handles plus typed status, snapshot, pump, and read structs.
+- Public ABI root: opaque PTY session handles plus typed status, snapshot, pump, and read structs.
 - Internal workspace wiring may still import Zig roots, but that is not a shipped or stable API.
 
 ```mermaid
@@ -44,7 +44,7 @@ classDiagram
 - `Session` owns pending outbound input, current size, lifecycle state, and transport-facing counters.
 - `OwnedPty` owns the concrete selected PTY implementation and cleanup.
 - `Session` talks to the abstract `Pty` interface only.
-- Test PTY variants are exported for conformance testing, not as host architecture.
+- Test PTY variants are exported for conformance testing only.
 - Concrete platform PTY implementations stay internal to `howl-pty`; hosts consume `OwnedPty` or `Pty`, not `UnixPty`/`AndroidPty` directly.
 
 ## Lifecycle
