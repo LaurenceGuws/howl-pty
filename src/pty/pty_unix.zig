@@ -82,6 +82,10 @@ pub const UnixPty = struct {
         self.wake_write_fd = @intCast(wake_fds[1]);
         self.child_pid = pid;
         self.started = true;
+        std.debug.assert(self.master_fd != null);
+        std.debug.assert(self.wake_read_fd != null);
+        std.debug.assert(self.wake_write_fd != null);
+        std.debug.assert(self.child_pid != null);
     }
 
     fn stopInternal(self: *UnixPty) void {
@@ -104,6 +108,10 @@ pub const UnixPty = struct {
         self.wake_read_fd = null;
         self.wake_write_fd = null;
         self.started = false;
+        std.debug.assert(self.master_fd == null);
+        std.debug.assert(self.wake_read_fd == null);
+        std.debug.assert(self.wake_write_fd == null);
+        std.debug.assert(self.child_pid == null);
     }
 
     fn refreshChildState(self: *UnixPty) void {
@@ -160,6 +168,7 @@ pub const UnixPty = struct {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
+        std.debug.assert(self.wake_read_fd != null);
         var fds = [_]posix.pollfd{
             .{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
             .{ .fd = self.wake_read_fd orelse return error.NotStarted, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
@@ -202,10 +211,11 @@ pub const UnixPty = struct {
     fn drainWakePipe(self: *UnixPty) void {
         const fd = self.wake_read_fd orelse return;
         var buf: [32]u8 = undefined;
+        const wake_chunk: isize = buf.len;
         while (true) {
             const n = c.read(fd, &buf, buf.len);
             if (n <= 0) return;
-            if (@as(usize, @intCast(n)) < buf.len) return;
+            if (n < wake_chunk) return;
         }
     }
 };
