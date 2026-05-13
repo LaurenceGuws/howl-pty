@@ -170,8 +170,8 @@ test "session pumps bounded transport reads into caller sink" {
 
     const result = session.pumpTransport(scratch[0..], Sink{ .out = &out, .allocator = allocator }, .{ .max_reads = 2, .max_bytes = 5 });
     try std.testing.expect(result.any_read);
-    try std.testing.expectEqual(@as(usize, 2), result.reads);
-    try std.testing.expectEqual(@as(usize, 5), result.bytes_read);
+    try std.testing.expectEqual(@as(u32, 2), result.reads);
+    try std.testing.expectEqual(@as(u32, 5), result.bytes_read);
     try std.testing.expectEqualStrings("abcde", out.items);
     try std.testing.expectEqualStrings("f", mem_pty.rx.items);
 }
@@ -202,13 +202,13 @@ test "session owns transport pump modes" {
 
     const constrained = session.pumpTransportMode(scratch[0..], Sink{}, .constrained);
     try std.testing.expect(constrained.any_read);
-    try std.testing.expectEqual(@as(usize, 2), constrained.reads);
-    try std.testing.expectEqual(@as(usize, 128 * 1024), constrained.bytes_read);
+    try std.testing.expectEqual(@as(u32, 2), constrained.reads);
+    try std.testing.expectEqual(@as(u32, 128 * 1024), constrained.bytes_read);
 
     const normal = session.pumpTransportMode(scratch[0..], Sink{}, .normal);
     try std.testing.expect(normal.any_read);
-    try std.testing.expectEqual(@as(usize, 2), normal.reads);
-    try std.testing.expectEqual(@as(usize, 72 * 1024), normal.bytes_read);
+    try std.testing.expectEqual(@as(u32, 2), normal.reads);
+    try std.testing.expectEqual(@as(u32, 72 * 1024), normal.bytes_read);
 }
 
 test "session restore normalizes active snapshots to stopped" {

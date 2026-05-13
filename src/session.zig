@@ -11,6 +11,9 @@ pub const Pty = pty_api.Pty;
 pub const OwnedTransport = pty_api.OwnedPty;
 pub const LaunchConfig = pty_api.LaunchConfig;
 pub const ControlSignal = pty_api.ControlSignal;
+
+const TransportReadLimit = u32;
+const TransportByteLimit = u32;
 /// Session initialization config.
 pub const Config = struct {
     allocator: std.mem.Allocator,
@@ -53,8 +56,8 @@ pub const Snapshot = struct {
 
 /// Bounds for one nonblocking transport pump pass.
 pub const TransportPumpLimits = struct {
-    max_reads: usize,
-    max_bytes: usize,
+    max_reads: TransportReadLimit,
+    max_bytes: TransportByteLimit,
 };
 
 /// Named transport pump budget selected by the runtime owner.
@@ -66,8 +69,8 @@ pub const TransportPumpMode = enum {
 /// Result of one transport pump pass.
 pub const TransportPumpResult = struct {
     any_read: bool = false,
-    reads: usize = 0,
-    bytes_read: usize = 0,
+    reads: TransportReadLimit = 0,
+    bytes_read: TransportByteLimit = 0,
 };
 
 /// Result of one outbound input pump pass.
@@ -78,10 +81,10 @@ pub const OutboundInputPump = struct {
     wait_readable: bool = false,
 };
 
-const normal_transport_reads: usize = 16;
-const normal_transport_bytes: usize = 1024 * 1024;
-const constrained_transport_reads: usize = 2;
-const constrained_transport_bytes: usize = 128 * 1024;
+const normal_transport_reads: TransportReadLimit = 16;
+const normal_transport_bytes: TransportByteLimit = 1024 * 1024;
+const constrained_transport_reads: TransportReadLimit = 2;
+const constrained_transport_bytes: TransportByteLimit = 128 * 1024;
 
 /// Operation counters for conformance/testing.
 pub const Ops = struct {
@@ -219,6 +222,7 @@ pub const Session = struct {
     /// Publish host input bytes into the pending outbound queue.
     pub fn publishHostInput(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
         if (bytes.len == 0) return;
+        std.debug.assert(self.pending.items.len <= self.pending_capacity);
         const projected_len = std.math.add(usize, self.pending.items.len, bytes.len) catch {
             self.ops.feed_rejected += 1;
             return error.QueueFull;
@@ -228,6 +232,8 @@ pub const Session = struct {
             return error.QueueFull;
         }
         try self.pending.appendSlice(self.allocator, bytes);
+        std.debug.assert(self.pending.items.len == projected_len);
+        std.debug.assert(self.pending.items.len <= self.pending_capacity);
         self.ops.feed_accepted += 1;
         self.ops.bytes_fed += bytes.len;
     }
@@ -292,7 +298,9 @@ pub const Session = struct {
     pub fn readTransport(self: *Session, buf: []u8) usize {
         if (buf.len == 0) return 0;
         const t = self.pty orelse return 0;
-        return t.read(buf) catch |err| handleReadError(self, err);
+        const n = t.read(buf) catch |err| return handleReadError(self, err);
+        std.debug.assert(n <= buf.len);
+        return n;
     }
 
     /// Read one transport chunk and deliver it to sink.
@@ -312,10 +320,13 @@ pub const Session = struct {
             const read_buf = scratch[0..@min(scratch.len, remaining)];
             const n = self.ingestTransport(read_buf, sink);
             if (n == 0) break;
+            std.debug.assert(n <= remaining);
             result.any_read = true;
             result.reads += 1;
-            result.bytes_read += n;
+            result.bytes_read += @intCast(n);
         }
+        std.debug.assert(result.reads <= limits.max_reads);
+        std.debug.assert(result.bytes_read <= limits.max_bytes);
         return result;
     }
 
@@ -332,6 +343,7 @@ pub const Session = struct {
     }
 
     fn flushOutboundPhase(self: *Session) usize {
+        std.debug.assert(self.pending.items.len <= self.pending_capacity);
         const pending_len = self.pending.items.len;
         if (pending_len == 0) return 0;
         if (self.pty) |t| return flushOutboundToTransport(self, t, pending_len);
@@ -356,6 +368,7 @@ pub const Session = struct {
         if (drained == 0) return;
         std.mem.copyForwards(u8, self.pending.items[0 .. pending_len - drained], self.pending.items[drained..pending_len]);
         self.pending.shrinkRetainingCapacity(pending_len - drained);
+        std.debug.assert(self.pending.items.len == pending_len - drained);
     }
 
     fn handleWriteError(self: *Session, err: anyerror) usize {
