@@ -84,6 +84,8 @@ pub const AndroidPty = struct {
         self.master_fd = @intCast(master_fd);
         self.child_pid = pid;
         self.started = true;
+        std.debug.assert(self.master_fd != null);
+        std.debug.assert(self.child_pid != null);
     }
 
     fn stopInternal(self: *AndroidPty) void {
@@ -98,6 +100,8 @@ pub const AndroidPty = struct {
         self.child_pid = null;
         self.master_fd = null;
         self.started = false;
+        std.debug.assert(self.master_fd == null);
+        std.debug.assert(self.child_pid == null);
     }
 
     fn refreshChildState(self: *AndroidPty) void {
@@ -161,6 +165,7 @@ pub const AndroidPty = struct {
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
             self.refreshChildState();
             if (!self.started) return error.NotStarted;
+            std.debug.assert(self.master_fd != null);
         }
         return (fds[0].revents & posix.POLL.IN) != 0;
     }
