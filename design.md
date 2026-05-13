@@ -5,14 +5,11 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 ## Purpose
 `howl-pty` owns PTY-backed child transport orchestration.
 
-It does not model terminal semantics. It owns queueing, transport start/stop, transport reads/writes, resize propagation, and transport selection.
-
-## Doc Set
-- `design.md`: owner boundary, lifecycle, and ABI contract.
+It does not model terminal semantics. It owns queueing, transport start and stop, transport reads and writes, resize propagation, and transport selection.
 
 ## Public Surface
 - Shipped contract: `include/howl_pty.h` and `howl_pty_*` exported symbols.
-- Public ABI root: opaque PTY session handles plus typed status, snapshot, pump, and read structs.
+- Public ABI root: opaque session handles plus typed status, snapshot, pump, and read structs.
 - Internal workspace wiring may still import Zig roots, but that is not a shipped or stable API.
 
 ```mermaid
