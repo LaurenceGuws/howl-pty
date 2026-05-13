@@ -1,27 +1,27 @@
 //! Responsibility: cover session PTY surface behavior.
-//! Ownership: howl-session tests own PTY selection and lifecycle checks.
+//! Ownership: howl-pty tests own PTY selection and lifecycle checks.
 //! Reason: keeps PTY regression coverage separate from runtime modules.
 
 const std = @import("std");
-const howl_session = @import("howl_session");
+const howl_pty = @import("howl_pty");
 
 test "pty control signals stay typed across the facade" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
 
     try mem_pty.pty().start();
     defer mem_pty.pty().stop();
 
     mem_pty.pty().control(.terminate);
-    try std.testing.expectEqual(howl_session.transport.ControlSignal.terminate, mem_pty.last_signal.?);
+    try std.testing.expectEqual(howl_pty.transport.ControlSignal.terminate, mem_pty.last_signal.?);
 }
 
 test "pty doubles share resize and write semantics through the interface" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
     try mem_pty.pty().start();
     defer mem_pty.pty().stop();
@@ -38,7 +38,7 @@ test "pty doubles share resize and write semantics through the interface" {
 test "partial pty preserves partial-write semantics through the interface" {
     const allocator = std.testing.allocator;
 
-    var partial = howl_session.testing.Transport.Partial.init(allocator, 2);
+    var partial = howl_pty.testing.Transport.Partial.init(allocator, 2);
     defer partial.deinit();
     try partial.pty().start();
     defer partial.pty().stop();
@@ -48,7 +48,7 @@ test "partial pty preserves partial-write semantics through the interface" {
 }
 
 test "fail pty surfaces transport errors instead of swallowing them" {
-    var fail_pty = howl_session.testing.Transport.Fail.init();
+    var fail_pty = howl_pty.testing.Transport.Fail.init();
     defer fail_pty.deinit();
     var buf = [_]u8{0};
 

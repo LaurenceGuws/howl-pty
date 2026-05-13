@@ -1,17 +1,17 @@
 //! Responsibility: cover session queue and lifecycle behavior.
-//! Ownership: howl-session tests own session regression checks.
+//! Ownership: howl-pty tests own session regression checks.
 //! Reason: keeps session behavior coverage separate from runtime modules.
 
 const std = @import("std");
-const howl_session = @import("howl_session");
+const howl_pty = @import("howl_pty");
 
-test "howl_session root methods remain available" {
+test "howl_pty root methods remain available" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -20,19 +20,19 @@ test "howl_session root methods remain available" {
     });
     defer session.deinit();
 
-    try std.testing.expectEqual(howl_session.Status.idle, session.snapshot().status);
-    try std.testing.expectEqual(howl_session.transport.Class, @TypeOf(howl_session.transport.class));
-    try std.testing.expectEqual(@as(u8, 15), howl_session.transport.ControlSignal.terminate.raw());
-    try std.testing.expectEqual(@as(u8, 3), howl_session.transport.ControlSignal.resize_notify.raw());
+    try std.testing.expectEqual(howl_pty.Status.idle, session.snapshot().status);
+    try std.testing.expectEqual(howl_pty.transport.Class, @TypeOf(howl_pty.transport.class));
+    try std.testing.expectEqual(@as(u8, 15), howl_pty.transport.ControlSignal.terminate.raw());
+    try std.testing.expectEqual(@as(u8, 3), howl_pty.transport.ControlSignal.resize_notify.raw());
 }
 
 test "session flushes outbound input deterministically" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -58,10 +58,10 @@ test "session flushes outbound input deterministically" {
 test "session preserves remainder after partial transport write" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_session.testing.Transport.Partial.init(allocator, 3);
+    var partial_pty = howl_pty.testing.Transport.Partial.init(allocator, 3);
     defer partial_pty.deinit();
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -85,10 +85,10 @@ test "session preserves remainder after partial transport write" {
 test "session pumps outbound input and reports readable wait policy" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_session.testing.Transport.Partial.init(allocator, 3);
+    var partial_pty = howl_pty.testing.Transport.Partial.init(allocator, 3);
     defer partial_pty.deinit();
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -117,10 +117,10 @@ test "session pumps outbound input and reports readable wait policy" {
 test "session publishes and pumps host input for thread backlog" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_session.testing.Transport.Partial.init(allocator, 2);
+    var partial_pty = howl_pty.testing.Transport.Partial.init(allocator, 2);
     defer partial_pty.deinit();
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -142,11 +142,11 @@ test "session publishes and pumps host input for thread backlog" {
 test "session pumps bounded transport reads into caller sink" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
     try mem_pty.rx.appendSlice(allocator, "abcdef");
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -179,13 +179,13 @@ test "session pumps bounded transport reads into caller sink" {
 test "session owns transport pump modes" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
     var input: [200 * 1024]u8 = undefined;
     @memset(input[0..], 'x');
     try mem_pty.rx.appendSlice(allocator, input[0..]);
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -214,7 +214,7 @@ test "session owns transport pump modes" {
 test "session restore normalizes active snapshots to stopped" {
     const allocator = std.testing.allocator;
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -232,17 +232,17 @@ test "session restore normalizes active snapshots to stopped" {
     const snap = session.snapshot();
     try std.testing.expectEqual(@as(u16, 132), snap.cols);
     try std.testing.expectEqual(@as(u16, 40), snap.rows);
-    try std.testing.expectEqual(howl_session.Status.stopped, snap.status);
+    try std.testing.expectEqual(howl_pty.Status.stopped, snap.status);
     try std.testing.expectEqual(@as(u32, 7), snap.resize_count);
 }
 
 test "session publishes typed control signals through the pty boundary" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_session.testing.Transport.Mem.init(allocator);
+    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -252,18 +252,18 @@ test "session publishes typed control signals through the pty boundary" {
 
     try session.attachPty(mem_pty.pty());
     try session.publishControlSignal(.interrupt);
-    try std.testing.expectEqual(howl_session.transport.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try std.testing.expectEqual(howl_pty.transport.ControlSignal.interrupt, mem_pty.last_signal.?);
 }
 
 test "session transport attachment is owned by session lifecycle" {
     const allocator = std.testing.allocator;
 
-    var first = howl_session.testing.Transport.Mem.init(allocator);
+    var first = howl_pty.testing.Transport.Mem.init(allocator);
     defer first.deinit();
-    var second = howl_session.testing.Transport.Mem.init(allocator);
+    var second = howl_pty.testing.Transport.Mem.init(allocator);
     defer second.deinit();
 
-    var session = try howl_session.Session.init(.{
+    var session = try howl_pty.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
@@ -281,7 +281,7 @@ test "session transport attachment is owned by session lifecycle" {
 }
 
 test "session constructs and owns build selected pty transport" {
-    var session = try howl_session.Session.initPty(.{
+    var session = try howl_pty.Session.initPty(.{
         .allocator = std.testing.allocator,
         .cols = 80,
         .rows = 24,
@@ -290,6 +290,6 @@ test "session constructs and owns build selected pty transport" {
     });
     defer session.deinit();
 
-    try std.testing.expectEqual(howl_session.Status.idle, session.snapshot().status);
+    try std.testing.expectEqual(howl_pty.Status.idle, session.snapshot().status);
     try std.testing.expect(!session.hasOutboundInputBacklog());
 }

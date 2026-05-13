@@ -3,20 +3,18 @@
 Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 
 ## Purpose
-`howl-session` owns terminal session I/O orchestration around a PTY transport.
+`howl-pty` owns terminal child transport orchestration around a PTY boundary.
 
 It does not model terminal semantics. It owns queueing, transport start/stop, transport reads/writes, resize propagation, and transport selection.
 
 ## Public Surface
-- `HowlSession`: package owner.
-- `Session`: queue/lifecycle owner.
-- `OwnedPty`: build-selected PTY owner.
-- `Pty`: transport interface contract.
-- `ControlSignal`: typed control signal vocabulary for the PTY boundary.
+- Shipped contract: `include/howl_pty.h` and `howl_pty_*` exported symbols.
+- Public ABI root: opaque session handles plus typed status, snapshot, pump, and read structs.
+- Internal workspace wiring may still import Zig roots, but that is not a shipped or stable API.
 
 ```mermaid
 classDiagram
-    class HowlSession
+    class HowlPty
     class Session {
       +init()
       +start()
@@ -36,8 +34,8 @@ classDiagram
     }
     class Pty
 
-    HowlSession --> Session
-    HowlSession --> OwnedPty
+    HowlPty --> Session
+    HowlPty --> OwnedPty
     Session --> Pty
     OwnedPty --> Pty
 ```
@@ -47,7 +45,7 @@ classDiagram
 - `OwnedPty` owns the concrete selected PTY implementation and cleanup.
 - `Session` talks to the abstract `Pty` interface only.
 - Test PTY variants are exported for conformance testing, not as host architecture.
-- Concrete platform PTY implementations stay internal to `howl-session`; hosts consume `OwnedPty` or `Pty`, not `UnixPty`/`AndroidPty` directly.
+- Concrete platform PTY implementations stay internal to `howl-pty`; hosts consume `OwnedPty` or `Pty`, not `UnixPty`/`AndroidPty` directly.
 
 ## Lifecycle
 ```mermaid
@@ -89,6 +87,11 @@ sequenceDiagram
 ```
 
 ## API Contracts
+- `howl_pty_session_init` returns an opaque owned session handle; callers must eventually call `howl_pty_session_deinit`.
+- `howl_pty_session_start`, `howl_pty_session_stop`, `howl_pty_session_wait_readable`, and `howl_pty_session_read` cover the host transport lifecycle and read path.
+- `howl_pty_session_publish_input`, `howl_pty_session_publish_input_and_pump`, `howl_pty_session_pump_outbound`, and `howl_pty_session_has_backlog` cover outbound host input progress.
+- `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.
+- `howl_pty_session_resize` and `howl_pty_session_snapshot` cover geometry and state observation.
 - `initPty` returns an owned transport; callers must eventually call `deinit` on that owner.
 - `Session.init` does not start the transport.
 - `Session.attachPty` and `Session.detachPty` are the supported transport replacement hooks while inactive.

@@ -8,10 +8,10 @@ const PtyVariant = enum {
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const pty_variant = b.option([]const u8, "pty-variant", "pty variant for howl-session") orelse "unix_pty";
+    const pty_variant = b.option([]const u8, "pty-variant", "pty variant for howl-pty") orelse "unix_pty";
 
-    const mod = b.addModule("howl_session", .{
-        .root_source_file = b.path("src/howl_session.zig"),
+    const mod = b.addModule("howl_pty", .{
+        .root_source_file = b.path("src/howl_pty.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -22,13 +22,13 @@ pub fn build(b: *std.Build) void {
     else if (std.mem.eql(u8, pty_variant, "android_pty"))
         .android_pty
     else
-        std.debug.panic("unsupported howl-session pty variant: {s}", .{pty_variant});
+        std.debug.panic("unsupported howl-pty pty variant: {s}", .{pty_variant});
 
     const module_options = b.addOptions();
     module_options.addOption(PtyVariant, "pty_variant", selected_variant);
     module_options.addOption(bool, "c_abi", false);
     mod.addOptions("session_options", module_options);
-    mod.addImport("howl_session", mod);
+    mod.addImport("howl_pty", mod);
 
     const mod_tests = b.addTest(.{
         .name = "test-unit",
@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(test_unit_step);
 
     const ffi_mod = b.createModule(.{
-        .root_source_file = b.path("src/howl_session.zig"),
+        .root_source_file = b.path("src/howl_pty.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -58,15 +58,15 @@ pub fn build(b: *std.Build) void {
     ffi_options.addOption(PtyVariant, "pty_variant", selected_variant);
     ffi_options.addOption(bool, "c_abi", true);
     ffi_mod.addOptions("session_options", ffi_options);
-    ffi_mod.addImport("howl_session", ffi_mod);
+    ffi_mod.addImport("howl_pty", ffi_mod);
 
     const ffi_lib = b.addLibrary(.{
-        .name = "howl_session",
+        .name = "howl_pty",
         .linkage = .dynamic,
         .root_module = ffi_mod,
     });
-    const ffi_build_step = b.step("ffi:build", "Build the howl-session C FFI library");
+    const ffi_build_step = b.step("ffi:build", "Build the howl-pty C FFI library");
     ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
     b.installArtifact(ffi_lib);
-    b.installFile("include/howl_session.h", "include/howl_session.h");
+    b.installFile("include/howl_pty.h", "include/howl_pty.h");
 }

@@ -1,7 +1,7 @@
 .{
-    .name = .howl_session,
+    .name = .howl_pty,
     .version = "0.0.0",
-    .fingerprint = 0xf94bb9f62e656918, // Changing this has security and trust implications.
+    .fingerprint = 0xf422fd90e307b3e3, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
