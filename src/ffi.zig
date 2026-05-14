@@ -160,6 +160,13 @@ pub fn sessionResize(handle: SessionHandle, cols: u16, rows: u16) callconv(.c) i
     return @intFromEnum(HowlPtyCallStatus.ok);
 }
 
+pub fn sessionPublishSignal(handle: SessionHandle, signal: u8) callconv(.c) i32 {
+    const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
+    const typed = pty.ControlSignal.fromRaw(signal) catch return @intFromEnum(HowlPtyCallStatus.invalid_argument);
+    owned.publishControlSignal(typed) catch return @intFromEnum(HowlPtyCallStatus.failed);
+    return @intFromEnum(HowlPtyCallStatus.ok);
+}
+
 pub fn sessionPublishInput(handle: SessionHandle, ptr: ?[*]const u8, len: usize) callconv(.c) i32 {
     const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
     const bytes = bytesIn(ptr, len) orelse return @intFromEnum(HowlPtyCallStatus.invalid_argument);
@@ -213,4 +220,30 @@ test "session ffi handle path covers lifecycle and transport progress" {
     try std.testing.expectEqual(@as(i32, 0), snap.status);
     try std.testing.expectEqual(@as(u16, 80), snap.cols);
     try std.testing.expectEqual(@as(u16, 24), snap.rows);
+}
+
+test "session ffi publishes typed control signals through the shipped abi" {
+    const allocator = std.testing.allocator;
+    var mem_pty = pty.Mem.init(allocator);
+    defer mem_pty.deinit();
+
+    var state = try session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
+        .pty = mem_pty.pty(),
+    });
+    defer state.deinit();
+
+    const handle: SessionHandle = @ptrCast(&state);
+    try std.testing.expectEqual(
+        @as(i32, 0),
+        sessionPublishSignal(handle, @intFromEnum(pty.ControlSignal.interrupt)),
+    );
+    try std.testing.expectEqual(pty.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(HowlPtyCallStatus.invalid_argument)),
+        sessionPublishSignal(handle, 0),
+    );
 }

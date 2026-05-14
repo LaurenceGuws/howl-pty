@@ -74,6 +74,7 @@ int32_t howl_pty_session_start(HowlPtySessionHandle handle);
 void howl_pty_session_stop(HowlPtySessionHandle handle);
 HowlPtySnapshot howl_pty_session_snapshot(HowlPtySessionHandle handle);
 int32_t howl_pty_session_resize(HowlPtySessionHandle handle, uint16_t cols, uint16_t rows);
+int32_t howl_pty_session_publish_signal(HowlPtySessionHandle handle, uint8_t signal);
 int32_t howl_pty_session_publish_input(HowlPtySessionHandle handle, const uint8_t *ptr, size_t len);
 HowlPtyOutboundPump howl_pty_session_pump_outbound(HowlPtySessionHandle handle, uint8_t woke);
 uint64_t howl_pty_session_pending_bytes(HowlPtySessionHandle handle);

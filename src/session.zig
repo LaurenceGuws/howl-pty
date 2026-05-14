@@ -149,6 +149,7 @@ pub const Session = struct {
     }
 
     /// Initialize a session that owns a build-selected PTY transport.
+    /// This is repo-local owner API, not part of the shipped C ABI contract.
     pub fn initPty(config: PtyConfig) !Session {
         const transport = try pty_api.OwnedPty.init(config.allocator, config.launch);
         return try Session.initOwnedTransport(.{

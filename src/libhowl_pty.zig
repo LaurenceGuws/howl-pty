@@ -11,6 +11,7 @@ comptime {
     @export(&ffi.sessionStop, .{ .name = "howl_pty_session_stop" });
     @export(&ffi.sessionSnapshot, .{ .name = "howl_pty_session_snapshot" });
     @export(&ffi.sessionResize, .{ .name = "howl_pty_session_resize" });
+    @export(&ffi.sessionPublishSignal, .{ .name = "howl_pty_session_publish_signal" });
     @export(&ffi.sessionPublishInput, .{ .name = "howl_pty_session_publish_input" });
     @export(&ffi.sessionPumpOutbound, .{ .name = "howl_pty_session_pump_outbound" });
     @export(&ffi.sessionPendingBytes, .{ .name = "howl_pty_session_pending_bytes" });

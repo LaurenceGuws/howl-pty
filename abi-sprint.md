@@ -100,6 +100,21 @@ It is not a place to preserve old roots for comfort.
 - no stale exported symbols remain
 - Linux host consumes the cleaned ABI only
 
+## Status
+
+The foundational PTY sprint is complete.
+
+Locked results:
+
+- one shipped PTY contract: `include/howl_pty.h`
+- one explicit ABI export root: `src/libhowl_pty.zig`
+- no wrapper namespace root
+- no Zig-shaped host facade root
+- sharpened ABI with explicit state-machine steps
+- Linux host build and run proof against the cleaned PTY ABI
+
+`howl-pty` is now the reference boundary target for the next internal terminal module cleanup.
+
 ## Checkpoints
 
 ### Checkpoint 1
@@ -194,6 +209,40 @@ Closes when:
 
 - host build passes against the new ABI
 - no compatibility layer was added to soften the cleanup
+
+### Checkpoint 6
+
+Theme: contract truth cleanup.
+
+Must do:
+
+- decide whether `HowlPtyControlSignal` is part of the real shipped ABI contract
+- if it is real, add the ABI function that makes it usable by embedders
+- if it is not real, remove the public header enum and public doc claims
+- remove any public contract wording that describes internal Zig-owner API as if it were shipped ABI
+
+Closes when:
+
+- every public header type has a real public contract use
+- `design.md` API contract section describes shipped ABI only
+- no half-real public contract remains
+
+### Checkpoint 7
+
+Theme: owner API cleanup.
+
+Must do:
+
+- decide whether `Session.initPty(...)` should remain as repo-local owner API
+- if it remains, document it as repo-local and non-ABI
+- if it does not remain, remove or move it toward the smallest true internal owner
+- tighten any remaining owner API wording so it does not blur the embedding boundary
+
+Closes when:
+
+- the remaining owner API is explicitly internal or explicitly removed
+- no convenience constructor posture remains without justification
+- PTY can be used as the bar-setting reference for other modules
 
 ## Proof Gates
 
