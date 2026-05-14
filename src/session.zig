@@ -6,7 +6,6 @@ const std = @import("std");
 const pty_api = @import("pty.zig");
 
 /// Canonical session owner surface.
-pub const PtyClass = pty_api.PtyClass;
 pub const Pty = pty_api.Pty;
 pub const OwnedTransport = pty_api.OwnedPty;
 pub const LaunchConfig = pty_api.LaunchConfig;
@@ -151,7 +150,7 @@ pub const Session = struct {
 
     /// Initialize a session that owns a build-selected PTY transport.
     pub fn initPty(config: PtyConfig) !Session {
-        const transport = try pty_api.initPty(config.allocator, config.launch);
+        const transport = try pty_api.OwnedPty.init(config.allocator, config.launch);
         return try Session.initOwnedTransport(.{
             .allocator = config.allocator,
             .cols = config.cols,

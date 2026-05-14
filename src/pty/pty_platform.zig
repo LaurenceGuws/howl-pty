@@ -101,7 +101,6 @@ pub const ControlSignal = enum(u8) {
 pub const PtyClass = enum {
     posix_pty,
     android_pty,
-    conpty,
 };
 
 pub fn setNonBlocking(fd: posix.fd_t) !void {

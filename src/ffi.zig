@@ -1,5 +1,5 @@
 //! Responsibility: implement the howl-pty native ABI surface.
-//! Ownership: PTY session handles, lifecycle, transport progress, and typed constants.
+//! Ownership: PTY session handles, lifecycle, transport progress, and state snapshots.
 //! Reason: keep hosts on a C ABI seam instead of Zig owner imports.
 
 const std = @import("std");

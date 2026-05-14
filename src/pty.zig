@@ -1,6 +1,6 @@
-//! Responsibility: publish pty interface, variants, and build selection.
-//! Ownership: host-to-session pty boundary and implementation binding.
-//! Reason: keep pty imports stable for hosts and tests in one facade.
+//! Responsibility: define the internal PTY interface and build-selected transport owner.
+//! Ownership: session-facing transport binding and conformance doubles.
+//! Reason: keep transport selection internal to howl-pty ownership.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -41,35 +41,34 @@ const SelectedPtyImpl = PtyImpl;
 const SelectedPtyClass = selected_pty_class;
 
 /// Build-selected PTY owner that keeps the concrete transport behind a boring surface.
-const OwnedPtyType = struct {
+pub const OwnedPty = struct {
     impl: SelectedPtyImpl,
 
     /// Construct the build-selected PTY owner.
-    pub fn init(allocator: std.mem.Allocator, launch: LaunchConfig) !OwnedPtyType {
+    pub fn init(allocator: std.mem.Allocator, launch: LaunchConfig) !OwnedPty {
         return .{ .impl = try initPtyImpl(allocator, launch) };
     }
 
     /// Release the owned PTY transport.
-    pub fn deinit(self: *OwnedPtyType) void {
+    pub fn deinit(self: *OwnedPty) void {
         self.impl.deinit();
     }
 
     /// Expose the session-facing PTY transport interface.
-    pub fn pty(self: *OwnedPtyType) platform.Pty {
+    pub fn pty(self: *OwnedPty) platform.Pty {
         return self.impl.pty();
     }
 
     /// Report the build-selected PTY class.
-    pub fn class(_: OwnedPtyType) platform.PtyClass {
+    pub fn class(_: OwnedPty) platform.PtyClass {
         return SelectedPtyClass;
     }
 };
 
-/// PTY facade surface for hosts and tests.
+/// Session-facing PTY interface.
 pub const Pty = platform.Pty;
 pub const PtyClass = platform.PtyClass;
 pub const ControlSignal = platform.ControlSignal;
-pub const OwnedPty = OwnedPtyType;
 
 // test variants
 pub const Mem = doubles.Mem;
@@ -78,8 +77,3 @@ pub const Fail = doubles.Fail;
 
 /// Build-selected PTY class value.
 pub const pty_class = SelectedPtyClass;
-
-/// Construct the build-selected PTY owner.
-pub fn initPty(allocator: std.mem.Allocator, launch: LaunchConfig) !OwnedPtyType {
-    return OwnedPtyType.init(allocator, launch);
-}

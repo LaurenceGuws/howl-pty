@@ -49,8 +49,8 @@ classDiagram
 - `Session` owns pending outbound input, current size, lifecycle state, and transport-facing counters.
 - `OwnedPty` owns the concrete selected PTY implementation and cleanup.
 - `Session` talks to the abstract `Pty` interface only.
-- Test PTY variants are exported for conformance testing only.
-- Concrete platform PTY implementations stay internal to `howl-pty`; hosts consume `OwnedPty` or `Pty`, not `UnixPty`/`AndroidPty` directly.
+- Test PTY variants are for repo-local conformance testing only.
+- Concrete platform PTY implementations stay internal to `howl-pty`; host transport ownership stays behind `Session` and the C ABI.
 
 ## Lifecycle
 ```mermaid
@@ -100,7 +100,7 @@ sequenceDiagram
 - `HowlPtySessionStatus` and `HowlPtyControlSignal` are header-declared contract values; the ABI does not export getter helpers for them.
 - Hosts and embedders consume that ABI through the header and exported symbols only.
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
-- `initPty` returns an owned transport; callers must eventually call `deinit` on that owner.
+- Build-selected transport construction stays internal to `howl-pty` session ownership.
 - `Session.init` does not start the transport.
 - `Session.attachPty` and `Session.detachPty` are the supported transport replacement hooks while inactive.
 - `start` transitions to active and starts the transport if present.
