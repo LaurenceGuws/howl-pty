@@ -94,9 +94,10 @@ sequenceDiagram
 ## API Contracts
 - `howl_pty_session_init` returns an opaque owned session handle; callers must eventually call `howl_pty_session_deinit`.
 - `howl_pty_session_start`, `howl_pty_session_stop`, `howl_pty_session_wait_readable`, and `howl_pty_session_read` cover the host transport lifecycle and read path.
-- `howl_pty_session_publish_input`, `howl_pty_session_publish_input_and_pump`, `howl_pty_session_pump_outbound`, and `howl_pty_session_has_backlog` cover outbound host input progress.
+- `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.
 - `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.
 - `howl_pty_session_resize` and `howl_pty_session_snapshot` cover geometry and state observation.
+- `HowlPtySessionStatus` and `HowlPtyControlSignal` are header-declared contract values; the ABI does not export getter helpers for them.
 - Hosts and embedders consume that ABI through the header and exported symbols only.
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
 - `initPty` returns an owned transport; callers must eventually call `deinit` on that owner.

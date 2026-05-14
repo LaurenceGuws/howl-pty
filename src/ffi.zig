@@ -6,7 +6,7 @@ const std = @import("std");
 const pty = @import("pty.zig");
 const session = @import("session.zig");
 
-pub const SessionHandle = usize;
+pub const SessionHandle = ?*anyopaque;
 
 pub const HowlPtyCallStatus = enum(c_int) {
     ok = 0,
@@ -47,22 +47,9 @@ fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
 
-fn statusByte(status: session.Status) u8 {
-    return @intFromEnum(status);
-}
-
-fn statusFromByte(status: u8) ?session.Status {
-    return switch (status) {
-        statusByte(.idle) => .idle,
-        statusByte(.active) => .active,
-        statusByte(.stopped) => .stopped,
-        else => null,
-    };
-}
-
 fn sessionFromHandle(handle: SessionHandle) ?*session.Session {
-    if (handle == 0) return null;
-    return @ptrFromInt(handle);
+    const raw = handle orelse return null;
+    return @alignCast(@ptrCast(raw));
 }
 
 fn bytesIn(ptr: ?[*]const u8, len: usize) ?[]const u8 {
@@ -119,54 +106,6 @@ fn outboundPumpOut(value: session.OutboundInputPump) FfiOutboundPump {
     };
 }
 
-pub fn modUnused() callconv(.c) void {}
-
-pub fn statusIdle() callconv(.c) u8 {
-    return statusByte(.idle);
-}
-
-pub fn statusActive() callconv(.c) u8 {
-    return statusByte(.active);
-}
-
-pub fn statusStopped() callconv(.c) u8 {
-    return statusByte(.stopped);
-}
-
-pub fn statusIsValid(status: u8) callconv(.c) u8 {
-    return boolByte(statusFromByte(status) != null);
-}
-
-pub fn statusIsActive(status: u8) callconv(.c) u8 {
-    const typed = statusFromByte(status) orelse return 0;
-    return boolByte(typed == .active);
-}
-
-pub fn controlSignalHangup() callconv(.c) u8 {
-    return pty.ControlSignal.hangup.raw();
-}
-
-pub fn controlSignalInterrupt() callconv(.c) u8 {
-    return pty.ControlSignal.interrupt.raw();
-}
-
-pub fn controlSignalResizeNotify() callconv(.c) u8 {
-    return pty.ControlSignal.resize_notify.raw();
-}
-
-pub fn controlSignalKill() callconv(.c) u8 {
-    return pty.ControlSignal.kill.raw();
-}
-
-pub fn controlSignalTerminate() callconv(.c) u8 {
-    return pty.ControlSignal.terminate.raw();
-}
-
-pub fn controlSignalIsValid(signal: u8) callconv(.c) u8 {
-    _ = pty.ControlSignal.fromRaw(signal) catch return 0;
-    return 1;
-}
-
 pub fn sessionInit(
     shell_ptr: ?[*]const u8,
     shell_len: usize,
@@ -178,8 +117,8 @@ pub fn sessionInit(
     rows: u16,
     pending_capacity: usize,
 ) callconv(.c) SessionHandle {
-    const launch = launchConfigIn(shell_ptr, shell_len, command_ptr, command_len, start_path_ptr, start_path_len) orelse return 0;
-    const owned = std.heap.c_allocator.create(session.Session) catch return 0;
+    const launch = launchConfigIn(shell_ptr, shell_len, command_ptr, command_len, start_path_ptr, start_path_len) orelse return null;
+    const owned = std.heap.c_allocator.create(session.Session) catch return null;
     owned.* = session.Session.initPty(.{
         .allocator = std.heap.c_allocator,
         .cols = cols,
@@ -188,9 +127,9 @@ pub fn sessionInit(
         .launch = launch,
     }) catch {
         std.heap.c_allocator.destroy(owned);
-        return 0;
+        return null;
     };
-    return @intFromPtr(owned);
+    return @ptrCast(owned);
 }
 
 pub fn sessionDeinit(handle: SessionHandle) callconv(.c) void {
@@ -208,11 +147,6 @@ pub fn sessionStart(handle: SessionHandle) callconv(.c) i32 {
 pub fn sessionStop(handle: SessionHandle) callconv(.c) void {
     const owned = sessionFromHandle(handle) orelse return;
     owned.stop();
-}
-
-pub fn sessionIsActive(handle: SessionHandle) callconv(.c) u8 {
-    const owned = sessionFromHandle(handle) orelse return 0;
-    return boolByte(owned.isActive());
 }
 
 pub fn sessionSnapshot(handle: SessionHandle) callconv(.c) FfiSnapshot {
@@ -233,21 +167,9 @@ pub fn sessionPublishInput(handle: SessionHandle, ptr: ?[*]const u8, len: usize)
     return @intFromEnum(HowlPtyCallStatus.ok);
 }
 
-pub fn sessionPublishInputAndPump(handle: SessionHandle, ptr: ?[*]const u8, len: usize) callconv(.c) FfiOutboundPump {
-    const owned = sessionFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.missing_handle) };
-    const bytes = bytesIn(ptr, len) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.invalid_argument) };
-    const result = owned.publishHostInputAndPump(bytes) catch return .{ .status = @intFromEnum(HowlPtyCallStatus.failed) };
-    return outboundPumpOut(result);
-}
-
 pub fn sessionPumpOutbound(handle: SessionHandle, woke: u8) callconv(.c) FfiOutboundPump {
     const owned = sessionFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.missing_handle) };
     return outboundPumpOut(owned.pumpOutboundInput(woke != 0));
-}
-
-pub fn sessionHasBacklog(handle: SessionHandle) callconv(.c) u8 {
-    const owned = sessionFromHandle(handle) orelse return 0;
-    return boolByte(owned.hasOutboundInputBacklog());
 }
 
 pub fn sessionPendingBytes(handle: SessionHandle) callconv(.c) u64 {
@@ -258,11 +180,6 @@ pub fn sessionPendingBytes(handle: SessionHandle) callconv(.c) u64 {
 pub fn sessionBytesApplied(handle: SessionHandle) callconv(.c) u64 {
     const owned = sessionFromHandle(handle) orelse return 0;
     return owned.ops.bytes_applied;
-}
-
-pub fn sessionKickWait(handle: SessionHandle) callconv(.c) void {
-    const owned = sessionFromHandle(handle) orelse return;
-    owned.kickTransportWait();
 }
 
 pub fn sessionWaitReadable(handle: SessionHandle, timeout_ms: i32) callconv(.c) u8 {
@@ -281,34 +198,15 @@ pub fn sessionRead(handle: SessionHandle, ptr: ?[*]u8, len: usize) callconv(.c) 
     };
 }
 
-test "session ffi status surface proves positive and negative space" {
-    try std.testing.expectEqual(@as(u8, @intFromEnum(session.Status.idle)), statusIdle());
-    try std.testing.expectEqual(@as(u8, @intFromEnum(session.Status.active)), statusActive());
-    try std.testing.expectEqual(@as(u8, @intFromEnum(session.Status.stopped)), statusStopped());
-    try std.testing.expectEqual(@as(u8, 1), statusIsValid(statusIdle()));
-    try std.testing.expectEqual(@as(u8, 1), statusIsActive(statusActive()));
-    try std.testing.expectEqual(@as(u8, 0), statusIsActive(statusStopped()));
-    try std.testing.expectEqual(@as(u8, 0), statusIsValid(255));
-}
-
-test "session ffi control-signal surface proves positive and negative space" {
-    try std.testing.expectEqual(pty.ControlSignal.hangup.raw(), controlSignalHangup());
-    try std.testing.expectEqual(pty.ControlSignal.interrupt.raw(), controlSignalInterrupt());
-    try std.testing.expectEqual(pty.ControlSignal.resize_notify.raw(), controlSignalResizeNotify());
-    try std.testing.expectEqual(pty.ControlSignal.kill.raw(), controlSignalKill());
-    try std.testing.expectEqual(pty.ControlSignal.terminate.raw(), controlSignalTerminate());
-    try std.testing.expectEqual(@as(u8, 1), controlSignalIsValid(controlSignalTerminate()));
-    try std.testing.expectEqual(@as(u8, 0), controlSignalIsValid(0));
-}
-
 test "session ffi handle path covers lifecycle and transport progress" {
     const handle = sessionInit(null, 0, null, 0, null, 0, 80, 24, 64);
     defer sessionDeinit(handle);
-    try std.testing.expect(handle != 0);
+    try std.testing.expect(handle != null);
     try std.testing.expectEqual(@as(i32, 0), sessionStart(handle));
-    try std.testing.expectEqual(@as(u8, 1), sessionIsActive(handle));
+    try std.testing.expectEqual(@as(u8, @intFromEnum(session.Status.active)), sessionSnapshot(handle).session_status);
 
-    const pumped = sessionPublishInputAndPump(handle, "echo hi\n".ptr, "echo hi\n".len);
+    try std.testing.expectEqual(@as(i32, 0), sessionPublishInput(handle, "echo hi\n".ptr, "echo hi\n".len));
+    const pumped = sessionPumpOutbound(handle, 0);
     try std.testing.expectEqual(@as(i32, 0), pumped.status);
 
     const snap = sessionSnapshot(handle);

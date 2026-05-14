@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-typedef uintptr_t HowlPtySessionHandle;
+typedef struct HowlPtySessionOpaque *HowlPtySessionHandle;
 
 typedef enum {
   HOWL_PTY_CALL_OK = 0,
@@ -16,6 +16,20 @@ typedef enum {
   HOWL_PTY_CALL_INVALID_ARGUMENT = -2,
   HOWL_PTY_CALL_FAILED = -3,
 } HowlPtyCallStatus;
+
+typedef enum {
+  HOWL_PTY_SESSION_IDLE = 0,
+  HOWL_PTY_SESSION_ACTIVE = 1,
+  HOWL_PTY_SESSION_STOPPED = 2,
+} HowlPtySessionStatus;
+
+typedef enum {
+  HOWL_PTY_CONTROL_SIGNAL_HANGUP = 1,
+  HOWL_PTY_CONTROL_SIGNAL_INTERRUPT = 2,
+  HOWL_PTY_CONTROL_SIGNAL_RESIZE_NOTIFY = 3,
+  HOWL_PTY_CONTROL_SIGNAL_KILL = 9,
+  HOWL_PTY_CONTROL_SIGNAL_TERMINATE = 15,
+} HowlPtyControlSignal;
 
 typedef struct {
   int32_t status;
@@ -45,19 +59,6 @@ typedef struct {
   uint64_t bytes_read;
 } HowlPtyReadResult;
 
-uint8_t howl_pty_status_idle(void);
-uint8_t howl_pty_status_active(void);
-uint8_t howl_pty_status_stopped(void);
-uint8_t howl_pty_status_is_valid(uint8_t status);
-uint8_t howl_pty_status_is_active(uint8_t status);
-
-uint8_t howl_pty_control_signal_hangup(void);
-uint8_t howl_pty_control_signal_interrupt(void);
-uint8_t howl_pty_control_signal_resize_notify(void);
-uint8_t howl_pty_control_signal_kill(void);
-uint8_t howl_pty_control_signal_terminate(void);
-uint8_t howl_pty_control_signal_is_valid(uint8_t signal);
-
 HowlPtySessionHandle howl_pty_session_init(
     const uint8_t *shell_ptr,
     size_t shell_len,
@@ -71,19 +72,12 @@ HowlPtySessionHandle howl_pty_session_init(
 void howl_pty_session_deinit(HowlPtySessionHandle handle);
 int32_t howl_pty_session_start(HowlPtySessionHandle handle);
 void howl_pty_session_stop(HowlPtySessionHandle handle);
-uint8_t howl_pty_session_is_active(HowlPtySessionHandle handle);
 HowlPtySnapshot howl_pty_session_snapshot(HowlPtySessionHandle handle);
 int32_t howl_pty_session_resize(HowlPtySessionHandle handle, uint16_t cols, uint16_t rows);
 int32_t howl_pty_session_publish_input(HowlPtySessionHandle handle, const uint8_t *ptr, size_t len);
-HowlPtyOutboundPump howl_pty_session_publish_input_and_pump(
-    HowlPtySessionHandle handle,
-    const uint8_t *ptr,
-    size_t len);
 HowlPtyOutboundPump howl_pty_session_pump_outbound(HowlPtySessionHandle handle, uint8_t woke);
-uint8_t howl_pty_session_has_backlog(HowlPtySessionHandle handle);
 uint64_t howl_pty_session_pending_bytes(HowlPtySessionHandle handle);
 uint64_t howl_pty_session_bytes_applied(HowlPtySessionHandle handle);
-void howl_pty_session_kick_wait(HowlPtySessionHandle handle);
 uint8_t howl_pty_session_wait_readable(HowlPtySessionHandle handle, int32_t timeout_ms);
 HowlPtyReadResult howl_pty_session_read(HowlPtySessionHandle handle, uint8_t *ptr, size_t len);
 
