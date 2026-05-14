@@ -10,7 +10,9 @@ It does not model terminal semantics. It owns queueing, transport start and stop
 ## Public Surface
 - Shipped contract: `include/howl_pty.h` and `howl_pty_*` exported symbols.
 - Public ABI root: opaque session handles plus typed status, snapshot, pump, and read structs.
-- Internal workspace wiring may still import Zig roots, but that is not a shipped or stable API.
+- Internal workspace wiring is not a public contract and is not a preservation target.
+- All Zig-shaped host facades in `howl-pty` are deletion targets, not preservation targets.
+- All Zig-shaped module roots in `howl-pty` are deletion targets, not preservation targets.
 
 ```mermaid
 classDiagram
