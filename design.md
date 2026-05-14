@@ -13,10 +13,10 @@ It does not model terminal semantics. It owns queueing, transport start and stop
 - Opaque session handles plus typed status, snapshot, pump, and read structs are the public ABI.
 - `src/howl_pty.zig` is not an embedding surface. If it survives, it is repo-local only.
 - Internal workspace wiring is not a public contract and is not a preservation target.
-- Deletion targets for the current cleanup are exact:
-  - `src/session_namespace.zig`
-  - the Zig-shaped host facade posture in `src/pty.zig`
-  - the Zig-shaped aggregation posture in `src/howl_pty.zig`
+- Accepted cleanup results now locked:
+  - `src/session_namespace.zig` is deleted
+  - the Zig-shaped host facade posture in `src/pty.zig` is removed
+  - the Zig-shaped aggregation posture in `src/howl_pty.zig` is removed
 
 ```mermaid
 classDiagram
@@ -94,20 +94,17 @@ sequenceDiagram
 ## API Contracts
 - `howl_pty_session_init` returns an opaque owned session handle; callers must eventually call `howl_pty_session_deinit`.
 - `howl_pty_session_start`, `howl_pty_session_stop`, `howl_pty_session_wait_readable`, and `howl_pty_session_read` cover the host transport lifecycle and read path.
+- `howl_pty_session_publish_signal` publishes one typed PTY control signal from the shipped `HowlPtyControlSignal` contract.
 - `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.
 - `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.
 - `howl_pty_session_resize` and `howl_pty_session_snapshot` cover geometry and state observation.
-- `HowlPtySessionStatus` and `HowlPtyControlSignal` are header-declared contract values; the ABI does not export getter helpers for them.
+- `HowlPtySessionStatus` and `HowlPtyControlSignal` are shipped header-declared contract values.
 - Hosts and embedders consume that ABI through the header and exported symbols only.
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
-- Build-selected transport construction stays internal to `howl-pty` session ownership.
-- `Session.init` does not start the transport.
-- `Session.attachPty` and `Session.detachPty` are the supported transport replacement hooks while inactive.
-- `start` transitions to active and starts the transport if present.
-- `publishControlSignal` accepts a typed `ControlSignal`, not a raw signal byte.
-- `publishHostInput` only queues bytes; `flushOutboundInput` performs writes.
-- `resize` updates tracked geometry and forwards to transport.
-- Transport failures move the session to `stopped`.
+
+## Internal Owner API
+- `Session.initPty` is repo-local owner API for build-selected transport construction.
+- It is not part of the shipped C ABI contract.
 
 ## Non-Goals
 - Terminal parsing or screen state.
