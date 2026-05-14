@@ -1,3 +1,7 @@
+// This repo ships a C ABI first until further notice.
+// Keep build entrypoints aligned around the shipped header and exported symbols, not privileged Zig imports.
+// The PTY variants exist to pressure-test one owned contract across platform paths, not to create host-shaped exceptions.
+
 const std = @import("std");
 
 const PtyVariant = enum {
