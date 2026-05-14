@@ -3,158 +3,159 @@
 //! Reason: keeps session behavior coverage separate from runtime modules.
 
 const std = @import("std");
-const howl_pty = @import("howl_pty");
+const session = @import("../session.zig");
+const pty = @import("../pty.zig");
 
-test "howl_pty root methods remain available" {
+test "session and pty owners stay directly importable" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
+    var mem_pty = pty.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_pty.Session.init(.{
+    var state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 16,
         .pty = mem_pty.pty(),
     });
-    defer session.deinit();
+    defer state.deinit();
 
-    try std.testing.expectEqual(howl_pty.Status.idle, session.snapshot().status);
-    try std.testing.expectEqual(howl_pty.transport.Class, @TypeOf(howl_pty.transport.class));
-    try std.testing.expectEqual(@as(u8, 15), howl_pty.transport.ControlSignal.terminate.raw());
-    try std.testing.expectEqual(@as(u8, 3), howl_pty.transport.ControlSignal.resize_notify.raw());
+    try std.testing.expectEqual(session.Status.idle, state.snapshot().status);
+    try std.testing.expectEqual(pty.PtyClass, @TypeOf(pty.pty_class));
+    try std.testing.expectEqual(@as(u8, 15), pty.ControlSignal.terminate.raw());
+    try std.testing.expectEqual(@as(u8, 3), pty.ControlSignal.resize_notify.raw());
 }
 
 test "session flushes outbound input deterministically" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
+    var mem_pty = pty.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 16,
         .pty = mem_pty.pty(),
     });
-    defer session.deinit();
+    defer session_state.deinit();
 
-    try session.start();
-    try std.testing.expect(session.isActive());
-    try session.publishHostInput("ping");
+    try session_state.start();
+    try std.testing.expect(session_state.isActive());
+    try session_state.publishHostInput("ping");
 
-    const drained = session.flushOutboundInput();
+    const drained = session_state.flushOutboundInput();
     try std.testing.expectEqual(@as(usize, 4), drained);
     try std.testing.expectEqualStrings("ping", mem_pty.tx.items);
-    try std.testing.expectEqual(@as(u64, 4), session.ops.bytes_fed);
-    try std.testing.expectEqual(@as(u64, 4), session.ops.bytes_applied);
-    try std.testing.expectEqual(@as(usize, 0), session.pending.items.len);
-    session.stop();
-    try std.testing.expect(!session.isActive());
+    try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_fed);
+    try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_applied);
+    try std.testing.expectEqual(@as(usize, 0), session_state.pending.items.len);
+    session_state.stop();
+    try std.testing.expect(!session_state.isActive());
 }
 
 test "session preserves remainder after partial transport write" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_pty.testing.Transport.Partial.init(allocator, 3);
+    var partial_pty = pty.Partial.init(allocator, 3);
     defer partial_pty.deinit();
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 16,
         .pty = partial_pty.pty(),
     });
-    defer session.deinit();
+    defer session_state.deinit();
 
-    try session.start();
-    try session.publishHostInput("abcdef");
+    try session_state.start();
+    try session_state.publishHostInput("abcdef");
 
-    try std.testing.expectEqual(@as(usize, 3), session.flushOutboundInput());
+    try std.testing.expectEqual(@as(usize, 3), session_state.flushOutboundInput());
     try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
-    try std.testing.expectEqualStrings("def", session.pending.items);
+    try std.testing.expectEqualStrings("def", session_state.pending.items);
 
-    try std.testing.expectEqual(@as(usize, 3), session.flushOutboundInput());
+    try std.testing.expectEqual(@as(usize, 3), session_state.flushOutboundInput());
     try std.testing.expectEqualStrings("abcdef", partial_pty.tx.items);
-    try std.testing.expectEqual(@as(usize, 0), session.pending.items.len);
+    try std.testing.expectEqual(@as(usize, 0), session_state.pending.items.len);
 }
 
 test "session pumps outbound input and reports readable wait policy" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_pty.testing.Transport.Partial.init(allocator, 3);
+    var partial_pty = pty.Partial.init(allocator, 3);
     defer partial_pty.deinit();
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 16,
         .pty = partial_pty.pty(),
     });
-    defer session.deinit();
-    try session.start();
+    defer session_state.deinit();
+    try session_state.start();
 
-    const idle = session.pumpOutboundInput(false);
+    const idle = session_state.pumpOutboundInput(false);
     try std.testing.expect(!idle.had_pending);
     try std.testing.expectEqual(@as(usize, 0), idle.drained);
     try std.testing.expect(!idle.has_pending);
     try std.testing.expect(idle.wait_readable);
 
-    try session.publishHostInput("abcdef");
-    const active = session.pumpOutboundInput(false);
+    try session_state.publishHostInput("abcdef");
+    const active = session_state.pumpOutboundInput(false);
     try std.testing.expect(active.had_pending);
     try std.testing.expectEqual(@as(usize, 3), active.drained);
     try std.testing.expect(active.has_pending);
     try std.testing.expect(!active.wait_readable);
     try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
-    try std.testing.expectEqualStrings("def", session.pending.items);
+    try std.testing.expectEqualStrings("def", session_state.pending.items);
 }
 
 test "session publishes and pumps host input for thread backlog" {
     const allocator = std.testing.allocator;
 
-    var partial_pty = howl_pty.testing.Transport.Partial.init(allocator, 2);
+    var partial_pty = pty.Partial.init(allocator, 2);
     defer partial_pty.deinit();
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 16,
         .pty = partial_pty.pty(),
     });
-    defer session.deinit();
-    try session.start();
+    defer session_state.deinit();
+    try session_state.start();
 
-    const pumped = try session.publishHostInputAndPump("hello");
+    const pumped = try session_state.publishHostInputAndPump("hello");
     try std.testing.expect(pumped.had_pending);
     try std.testing.expectEqual(@as(usize, 2), pumped.drained);
     try std.testing.expect(pumped.has_pending);
     try std.testing.expect(!pumped.wait_readable);
     try std.testing.expectEqualStrings("he", partial_pty.tx.items);
-    try std.testing.expectEqualStrings("llo", session.pending.items);
+    try std.testing.expectEqualStrings("llo", session_state.pending.items);
 }
 
 test "session pumps bounded transport reads into caller sink" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
+    var mem_pty = pty.Mem.init(allocator);
     defer mem_pty.deinit();
     try mem_pty.rx.appendSlice(allocator, "abcdef");
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 16,
         .pty = mem_pty.pty(),
     });
-    defer session.deinit();
-    try session.start();
+    defer session_state.deinit();
+    try session_state.start();
 
     const Sink = struct {
         out: *std.ArrayListUnmanaged(u8),
@@ -168,7 +169,7 @@ test "session pumps bounded transport reads into caller sink" {
     defer out.deinit(allocator);
     var scratch: [3]u8 = undefined;
 
-    const result = session.pumpTransport(scratch[0..], Sink{ .out = &out, .allocator = allocator }, .{ .max_reads = 2, .max_bytes = 5 });
+    const result = session_state.pumpTransport(scratch[0..], Sink{ .out = &out, .allocator = allocator }, .{ .max_reads = 2, .max_bytes = 5 });
     try std.testing.expect(result.any_read);
     try std.testing.expectEqual(@as(u32, 2), result.reads);
     try std.testing.expectEqual(@as(u32, 5), result.bytes_read);
@@ -179,33 +180,33 @@ test "session pumps bounded transport reads into caller sink" {
 test "session owns transport pump modes" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
+    var mem_pty = pty.Mem.init(allocator);
     defer mem_pty.deinit();
     var input: [200 * 1024]u8 = undefined;
     @memset(input[0..], 'x');
     try mem_pty.rx.appendSlice(allocator, input[0..]);
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 16,
         .pty = mem_pty.pty(),
     });
-    defer session.deinit();
-    try session.start();
+    defer session_state.deinit();
+    try session_state.start();
 
     const Sink = struct {
         pub fn onTransportBytes(_: @This(), _: []const u8) void {}
     };
     var scratch: [64 * 1024]u8 = undefined;
 
-    const constrained = session.pumpTransportMode(scratch[0..], Sink{}, .constrained);
+    const constrained = session_state.pumpTransportMode(scratch[0..], Sink{}, .constrained);
     try std.testing.expect(constrained.any_read);
     try std.testing.expectEqual(@as(u32, 2), constrained.reads);
     try std.testing.expectEqual(@as(u32, 128 * 1024), constrained.bytes_read);
 
-    const normal = session.pumpTransportMode(scratch[0..], Sink{}, .normal);
+    const normal = session_state.pumpTransportMode(scratch[0..], Sink{}, .normal);
     try std.testing.expect(normal.any_read);
     try std.testing.expectEqual(@as(u32, 2), normal.reads);
     try std.testing.expectEqual(@as(u32, 72 * 1024), normal.bytes_read);
@@ -214,82 +215,82 @@ test "session owns transport pump modes" {
 test "session restore normalizes active snapshots to stopped" {
     const allocator = std.testing.allocator;
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 8,
     });
-    defer session.deinit();
+    defer session_state.deinit();
 
-    try session.restore(.{
+    try session_state.restore(.{
         .cols = 132,
         .rows = 40,
         .status = .active,
         .resize_count = 7,
     });
 
-    const snap = session.snapshot();
+    const snap = session_state.snapshot();
     try std.testing.expectEqual(@as(u16, 132), snap.cols);
     try std.testing.expectEqual(@as(u16, 40), snap.rows);
-    try std.testing.expectEqual(howl_pty.Status.stopped, snap.status);
+    try std.testing.expectEqual(session.Status.stopped, snap.status);
     try std.testing.expectEqual(@as(u32, 7), snap.resize_count);
 }
 
 test "session publishes typed control signals through the pty boundary" {
     const allocator = std.testing.allocator;
 
-    var mem_pty = howl_pty.testing.Transport.Mem.init(allocator);
+    var mem_pty = pty.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 8,
     });
-    defer session.deinit();
+    defer session_state.deinit();
 
-    try session.attachPty(mem_pty.pty());
-    try session.publishControlSignal(.interrupt);
-    try std.testing.expectEqual(howl_pty.transport.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try session_state.attachPty(mem_pty.pty());
+    try session_state.publishControlSignal(.interrupt);
+    try std.testing.expectEqual(pty.ControlSignal.interrupt, mem_pty.last_signal.?);
 }
 
 test "session transport attachment is owned by session lifecycle" {
     const allocator = std.testing.allocator;
 
-    var first = howl_pty.testing.Transport.Mem.init(allocator);
+    var first = pty.Mem.init(allocator);
     defer first.deinit();
-    var second = howl_pty.testing.Transport.Mem.init(allocator);
+    var second = pty.Mem.init(allocator);
     defer second.deinit();
 
-    var session = try howl_pty.Session.init(.{
+    var session_state = try session.Session.init(.{
         .allocator = allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 8,
         .pty = first.pty(),
     });
-    defer session.deinit();
+    defer session_state.deinit();
 
-    try session.attachPty(second.pty());
-    try session.start();
-    try std.testing.expectError(error.SessionActive, session.detachPty());
-    session.stop();
-    try session.detachPty();
-    try std.testing.expectError(error.TransportUnavailable, session.publishControlSignal(.terminate));
+    try session_state.attachPty(second.pty());
+    try session_state.start();
+    try std.testing.expectError(error.SessionActive, session_state.detachPty());
+    session_state.stop();
+    try session_state.detachPty();
+    try std.testing.expectError(error.TransportUnavailable, session_state.publishControlSignal(.terminate));
 }
 
 test "session constructs and owns build selected pty transport" {
-    var session = try howl_pty.Session.initPty(.{
+    var session_state = try session.Session.initPty(.{
         .allocator = std.testing.allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 8,
         .launch = .{ .shell_path = "/bin/sh" },
     });
-    defer session.deinit();
+    defer session_state.deinit();
 
-    try std.testing.expectEqual(howl_pty.Status.idle, session.snapshot().status);
-    try std.testing.expect(!session.hasOutboundInputBacklog());
+    try std.testing.expectEqual(session.Status.idle, session_state.snapshot().status);
+    try std.testing.expect(!session_state.hasOutboundInputBacklog());
 }

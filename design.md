@@ -8,15 +8,19 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 It does not model terminal semantics. It owns queueing, transport start and stop, transport reads and writes, resize propagation, and transport selection.
 
 ## Public Surface
-- Shipped contract: `include/howl_pty.h` and `howl_pty_*` exported symbols.
-- Public ABI root: opaque session handles plus typed status, snapshot, pump, and read structs.
+- The only shipped embedding contract is `include/howl_pty.h` plus `howl_pty_*` exported symbols.
+- The only public root that may export that contract is `src/libhowl_pty.zig`.
+- Opaque session handles plus typed status, snapshot, pump, and read structs are the public ABI.
+- `src/howl_pty.zig` is not an embedding surface. If it survives, it is repo-local only.
 - Internal workspace wiring is not a public contract and is not a preservation target.
-- All Zig-shaped host facades in `howl-pty` are deletion targets, not preservation targets.
-- All Zig-shaped module roots in `howl-pty` are deletion targets, not preservation targets.
+- Deletion targets for the current cleanup are exact:
+  - `src/session_namespace.zig`
+  - the Zig-shaped host facade posture in `src/pty.zig`
+  - the Zig-shaped aggregation posture in `src/howl_pty.zig`
 
 ```mermaid
 classDiagram
-    class HowlPty
+    class HowlPtyAbi
     class Session {
       +init()
       +start()
@@ -36,8 +40,7 @@ classDiagram
     }
     class Pty
 
-    HowlPty --> Session
-    HowlPty --> OwnedPty
+    HowlPtyAbi --> Session
     Session --> Pty
     OwnedPty --> Pty
 ```
@@ -94,6 +97,8 @@ sequenceDiagram
 - `howl_pty_session_publish_input`, `howl_pty_session_publish_input_and_pump`, `howl_pty_session_pump_outbound`, and `howl_pty_session_has_backlog` cover outbound host input progress.
 - `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.
 - `howl_pty_session_resize` and `howl_pty_session_snapshot` cover geometry and state observation.
+- Hosts and embedders consume that ABI through the header and exported symbols only.
+- Zig root imports are not an acceptable host integration path and are not a preservation target.
 - `initPty` returns an owned transport; callers must eventually call `deinit` on that owner.
 - `Session.init` does not start the transport.
 - `Session.attachPty` and `Session.detachPty` are the supported transport replacement hooks while inactive.
@@ -109,6 +114,8 @@ sequenceDiagram
 - Host event loops.
 
 ## Change Rules
+- Keep the embedding boundary C ABI first in docs, roots, and build wiring.
+- Delete wrapper namespace roots instead of preserving parallel Zig public stories.
 - Concrete PTY implementations must stay behind `OwnedPty` and `Pty`.
 - Queue policy belongs in `Session`, not in hosts.
 - New transport variants should preserve the same owner/interface split.

@@ -30,6 +30,47 @@ That role must:
 
 The git gatekeeper closes only on TigerBeetle-style outcomes. Near-miss cleanup does not pass.
 
+The engineer does not set boundary policy, checkpoint scope, acceptance criteria, or fallback shape.
+
+The engineer reads the assigned checkpoint, executes only that checkpoint, proves it, and reports it
+back in the required format.
+
+If the engineer finds unclear ownership, unclear ABI shape, or a required wrapper to make progress,
+the engineer must stop and report `work-not-clear` instead of guessing.
+
+## Engineer Workflow
+
+The engineer must follow this loop exactly for every checkpoint:
+
+1. Read the control docs.
+2. Read the owning files named in the checkpoint.
+3. Restate the owner, boundary, and deletion target before editing.
+4. Make the smallest complete change that actually sharpens the boundary.
+5. Do not preserve any facade, wrapper, or stale symbol for convenience.
+6. Run the required proof commands.
+7. Write the review report in the required format.
+8. Stop and wait for architect review.
+
+The engineer must not:
+
+- open the next checkpoint before the current checkpoint is reviewed
+- add compatibility shims
+- preserve dead roots for migration comfort
+- widen scope without explicit approval
+- commit, push, or amend the checkpoint unless the architect explicitly tells them to
+
+## Start Conditions
+
+Before editing, the engineer must answer all of these exactly:
+
+- Which file is the true owner?
+- Which public surface is being removed?
+- Which public surface remains after this checkpoint?
+- What exact file or symbol is a deletion target?
+- What proof closes the checkpoint?
+
+If any answer is weak or uncertain, stop with `work-not-clear`.
+
 ## North Star
 
 `howl-pty` is a PTY state-machine contract exposed for embedders through C ABI.
@@ -65,6 +106,10 @@ It is not a place to preserve old roots for comfort.
 
 Theme: contract lock.
 
+Assigned files:
+
+- `design.md`
+
 Must do:
 
 - rewrite `design.md` facts to describe C ABI as the only real embedding boundary
@@ -80,6 +125,13 @@ Closes when:
 ### Checkpoint 2
 
 Theme: root and facade deletion.
+
+Assigned files:
+
+- `src/session_namespace.zig`
+- `src/howl_pty.zig`
+- `src/libhowl_pty.zig`
+- `build.zig`
 
 Must do:
 
@@ -148,10 +200,12 @@ Closes when:
 Each checkpoint must close with all of the following:
 
 - `zig build test` in `howl-pty`
-- `nu "./style.nu" --touched-files`
-- `nu "./style.nu" --failures`
+- `nu "./style.nu" --touched-files --json`
+- `nu "./style.nu" --failures --json`
 - `git diff --check`
 - when ABI changes reach the host seam, `zig build` in `howl-linux-host`
+
+Proof output must be included in the review report. Saying that proof passed is not enough.
 
 ## Review Gates
 
@@ -177,3 +231,56 @@ Do not commit unless the architect/reviewer says all of the following are true:
 - the result matches TigerBeetle style, not just local improvement
 
 If the change is merely better than before, it is not ready.
+
+## Required Review Report
+
+Every engineer handoff must use exactly this format:
+
+### Checkpoint
+
+- checkpoint number and theme
+
+### Owner View
+
+- the true owner file
+- the public boundary being sharpened
+- the Zig-shaped facade, root, or symbol removed
+
+### Before
+
+- exact files read
+- exact smell being corrected
+
+### Changes Made
+
+- exact files changed
+- exact files deleted
+- exact public symbols removed or added
+
+### Boundary Result
+
+- what public surface remains after the change
+- why this is more owner-true
+- why no compatibility layer was kept
+
+### Proof
+
+- exact commands run
+- exact result of each command
+
+### Style Gate
+
+- `nu "./style.nu" --touched-files --json` result
+- `nu "./style.nu" --failures --json` result
+
+### Open Edges
+
+- any unresolved issue
+- or `none`
+
+### Commit Recommendation
+
+- `ready`
+- or `not ready`
+
+Any report that omits one of these sections fails review.
