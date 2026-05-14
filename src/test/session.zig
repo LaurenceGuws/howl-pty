@@ -1,6 +1,3 @@
-//! Responsibility: cover session queue and lifecycle behavior.
-//! Ownership: howl-pty tests own session regression checks.
-//! Reason: keeps session behavior coverage separate from runtime modules.
 
 const std = @import("std");
 const session = @import("../session.zig");

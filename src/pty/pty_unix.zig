@@ -1,6 +1,3 @@
-//! Responsibility: implement Unix PTY creation.
-//! Ownership: session PTY layer owns platform-specific PTY variants.
-//! Reason: keeps Unix process and terminal setup behind the session boundary.
 
 const std = @import("std");
 const builtin = @import("builtin");

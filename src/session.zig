@@ -1,6 +1,3 @@
-//! Responsibility: session queue/lifecycle boundary.
-//! Ownership: pending input queue, owned pty lifecycle, outbound pump policy, resize tracking.
-//! Reason: keep session focused on I/O orchestration only.
 
 const std = @import("std");
 const pty_api = @import("pty.zig");

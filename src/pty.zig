@@ -1,6 +1,3 @@
-//! Responsibility: define the internal PTY interface and build-selected transport owner.
-//! Ownership: session-facing transport binding and conformance doubles.
-//! Reason: keep transport selection internal to howl-pty ownership.
 
 const std = @import("std");
 const builtin = @import("builtin");

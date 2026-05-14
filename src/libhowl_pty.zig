@@ -1,6 +1,3 @@
-//! Responsibility: define the howl-pty ABI export root.
-//! Ownership: export `howl_pty_*` symbols only.
-//! Reason: keep the shipped boundary on the C ABI instead of a Zig root.
 
 const ffi = @import("ffi.zig");
 

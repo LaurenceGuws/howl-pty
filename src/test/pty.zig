@@ -1,6 +1,3 @@
-//! Responsibility: cover session PTY surface behavior.
-//! Ownership: howl-pty tests own PTY selection and lifecycle checks.
-//! Reason: keeps PTY regression coverage separate from runtime modules.
 
 const std = @import("std");
 const pty = @import("../pty.zig");

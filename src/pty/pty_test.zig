@@ -1,6 +1,3 @@
-//! Responsibility: provide deterministic PTY test behavior.
-//! Ownership: session tests own in-memory PTY behavior for queue/lifecycle coverage.
-//! Reason: keeps test-only PTY semantics outside platform variants.
 
 const std = @import("std");
 const Pty = @import("pty_platform.zig").Pty;
