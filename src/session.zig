@@ -57,9 +57,9 @@ pub const TransportPumpLimits = struct {
 };
 
 /// Named transport pump budget selected by the runtime owner.
-pub const TransportPumpMode = enum {
-    normal,
-    constrained,
+pub const TransportPumpMode = enum(u8) {
+    normal = 0,
+    constrained = 1,
 };
 
 /// Result of one transport pump pass.
@@ -77,10 +77,18 @@ pub const OutboundInputPump = struct {
     wait_readable: bool = false,
 };
 
-const normal_transport_reads: TransportReadLimit = 16;
+// Alacritty stages PTY input through a 1 MiB read buffer before it forces a
+// parser synchronization point. Keep the PTY owner's normal burst at the same
+// byte scale so hosts can follow the reference transport shape through the C
+// ABI instead of inventing their own smaller byte limits.
 const normal_transport_bytes: TransportByteLimit = 1024 * 1024;
-const constrained_transport_reads: TransportReadLimit = 2;
+// The host-side scratch buffer is 64 KiB, so sixteen reads cover the full
+// normal 1 MiB burst without adding a second byte budget in the host loop.
+const normal_transport_reads: TransportReadLimit = 16;
+// Constrained mode exists for proofs that need more interleaving than the
+// normal burst while preserving the same Session-owned transport policy seam.
 const constrained_transport_bytes: TransportByteLimit = 128 * 1024;
+const constrained_transport_reads: TransportReadLimit = 2;
 
 /// Operation counters for conformance/testing.
 pub const Ops = struct {
@@ -332,7 +340,7 @@ pub const Session = struct {
         return self.pumpTransport(scratch, sink, transportPumpLimits(mode));
     }
 
-    fn transportPumpLimits(mode: TransportPumpMode) TransportPumpLimits {
+    pub fn transportPumpLimits(mode: TransportPumpMode) TransportPumpLimits {
         return switch (mode) {
             .normal => .{ .max_reads = normal_transport_reads, .max_bytes = normal_transport_bytes },
             .constrained => .{ .max_reads = constrained_transport_reads, .max_bytes = constrained_transport_bytes },

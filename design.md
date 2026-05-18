@@ -94,6 +94,7 @@ sequenceDiagram
 ## API Contracts
 - `howl_pty_session_init` returns an opaque owned session handle; callers must eventually call `howl_pty_session_deinit`.
 - `howl_pty_session_start`, `howl_pty_session_stop`, `howl_pty_session_wait_readable`, and `howl_pty_session_read` cover the host transport lifecycle and read path.
+- `howl_pty_transport_pump_limits` exposes the Session-owned named read burst policy so hosts can select a transport mode without inventing local PTY read budgets.
 - `howl_pty_session_publish_signal` publishes one typed PTY control signal from the shipped `HowlPtyControlSignal` contract.
 - `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.
 - `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.

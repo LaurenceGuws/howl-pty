@@ -40,6 +40,12 @@ pub const FfiReadResult = extern struct {
     bytes_read: u64 = 0,
 };
 
+pub const FfiTransportPumpLimits = extern struct {
+    status: i32 = @intFromEnum(HowlPtyCallStatus.failed),
+    max_reads: u32 = 0,
+    max_bytes: u32 = 0,
+};
+
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
@@ -100,6 +106,22 @@ fn outboundPumpOut(value: session.OutboundInputPump) FfiOutboundPump {
         .has_pending = boolByte(value.has_pending),
         .wait_readable = boolByte(value.wait_readable),
         .drained = value.drained,
+    };
+}
+
+fn transportPumpLimitsOut(value: session.TransportPumpLimits) FfiTransportPumpLimits {
+    return .{
+        .status = @intFromEnum(HowlPtyCallStatus.ok),
+        .max_reads = value.max_reads,
+        .max_bytes = value.max_bytes,
+    };
+}
+
+fn transportPumpModeIn(mode: u8) ?session.TransportPumpMode {
+    return switch (mode) {
+        @intFromEnum(session.TransportPumpMode.normal) => .normal,
+        @intFromEnum(session.TransportPumpMode.constrained) => .constrained,
+        else => null,
     };
 }
 
@@ -202,6 +224,11 @@ pub fn sessionRead(handle: SessionHandle, ptr: ?[*]u8, len: usize) callconv(.c) 
     };
 }
 
+pub fn transportPumpLimits(mode: u8) callconv(.c) FfiTransportPumpLimits {
+    const typed = transportPumpModeIn(mode) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.invalid_argument) };
+    return transportPumpLimitsOut(session.Session.transportPumpLimits(typed));
+}
+
 test "session ffi handle path covers lifecycle and transport progress" {
     const handle = sessionInit(null, 0, null, 0, null, 0, 80, 24, 64);
     defer sessionDeinit(handle);
@@ -243,4 +270,19 @@ test "session ffi publishes typed control signals through the shipped abi" {
         @as(i32, @intFromEnum(HowlPtyCallStatus.invalid_argument)),
         sessionPublishSignal(handle, 0),
     );
+}
+
+test "transport pump limits ffi exposes shipped PTY burst policy" {
+    const normal = transportPumpLimits(@intFromEnum(session.TransportPumpMode.normal));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlPtyCallStatus.ok)), normal.status);
+    try std.testing.expectEqual(@as(u32, 16), normal.max_reads);
+    try std.testing.expectEqual(@as(u32, 1024 * 1024), normal.max_bytes);
+
+    const constrained = transportPumpLimits(@intFromEnum(session.TransportPumpMode.constrained));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlPtyCallStatus.ok)), constrained.status);
+    try std.testing.expectEqual(@as(u32, 2), constrained.max_reads);
+    try std.testing.expectEqual(@as(u32, 128 * 1024), constrained.max_bytes);
+
+    const invalid = transportPumpLimits(99);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlPtyCallStatus.invalid_argument)), invalid.status);
 }

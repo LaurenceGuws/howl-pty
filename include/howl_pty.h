@@ -31,6 +31,11 @@ typedef enum {
   HOWL_PTY_CONTROL_SIGNAL_TERMINATE = 15,
 } HowlPtyControlSignal;
 
+typedef enum {
+  HOWL_PTY_TRANSPORT_PUMP_NORMAL = 0,
+  HOWL_PTY_TRANSPORT_PUMP_CONSTRAINED = 1,
+} HowlPtyTransportPumpMode;
+
 typedef struct {
   int32_t status;
   uint16_t cols;
@@ -59,6 +64,12 @@ typedef struct {
   uint64_t bytes_read;
 } HowlPtyReadResult;
 
+typedef struct {
+  int32_t status;
+  uint32_t max_reads;
+  uint32_t max_bytes;
+} HowlPtyTransportPumpLimits;
+
 HowlPtySessionHandle howl_pty_session_init(
     const uint8_t *shell_ptr,
     size_t shell_len,
@@ -81,6 +92,7 @@ uint64_t howl_pty_session_pending_bytes(HowlPtySessionHandle handle);
 uint64_t howl_pty_session_bytes_applied(HowlPtySessionHandle handle);
 uint8_t howl_pty_session_wait_readable(HowlPtySessionHandle handle, int32_t timeout_ms);
 HowlPtyReadResult howl_pty_session_read(HowlPtySessionHandle handle, uint8_t *ptr, size_t len);
+HowlPtyTransportPumpLimits howl_pty_transport_pump_limits(uint8_t mode);
 
 #ifdef __cplusplus
 }

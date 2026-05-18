@@ -15,4 +15,5 @@ comptime {
     @export(&ffi.sessionBytesApplied, .{ .name = "howl_pty_session_bytes_applied" });
     @export(&ffi.sessionWaitReadable, .{ .name = "howl_pty_session_wait_readable" });
     @export(&ffi.sessionRead, .{ .name = "howl_pty_session_read" });
+    @export(&ffi.transportPumpLimits, .{ .name = "howl_pty_transport_pump_limits" });
 }
