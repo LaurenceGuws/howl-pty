@@ -79,14 +79,16 @@ pub const OutboundInputPump = struct {
 
 // Alacritty stages PTY input through a 1 MiB read buffer before it forces a
 // parser synchronization point. Keep the PTY owner's normal burst at the same
-// byte scale so hosts can follow the reference transport shape through the C
-// ABI instead of inventing their own smaller byte limits.
+// byte scale so hosts can follow one explicit transport policy through the C
+// ABI instead of inventing smaller local byte limits.
 const normal_transport_bytes: TransportByteLimit = 1024 * 1024;
-// The host-side scratch buffer is 64 KiB, so sixteen reads cover the full
-// normal 1 MiB burst without adding a second byte budget in the host loop.
+// The host scratch chunk is intentionally 64 KiB: close to Alacritty's
+// MAX_LOCKED_READ scale, but rounded so sixteen equal reads cover the full
+// 1 MiB PTY burst without layering a second byte policy on top.
 const normal_transport_reads: TransportReadLimit = 16;
-// Constrained mode exists for proofs that need more interleaving than the
-// normal burst while preserving the same Session-owned transport policy seam.
+// Constrained mode exists for proofs that need tighter interleaving while
+// preserving the same Session-owned chunk shape: two 64 KiB reads, or 128 KiB
+// total, before the owner thread must reschedule.
 const constrained_transport_bytes: TransportByteLimit = 128 * 1024;
 const constrained_transport_reads: TransportReadLimit = 2;
 
