@@ -137,12 +137,13 @@ pub fn sessionInit(
     pending_capacity: usize,
 ) callconv(.c) SessionHandle {
     const launch = launchConfigIn(shell_ptr, shell_len, command_ptr, command_len, start_path_ptr, start_path_len) orelse return null;
+    if (pending_capacity > std.math.maxInt(session.TransportByteLimit)) return null;
     const owned = std.heap.c_allocator.create(session.Session) catch return null;
     owned.* = session.Session.initPty(.{
         .allocator = std.heap.c_allocator,
         .cols = cols,
         .rows = rows,
-        .pending_capacity = pending_capacity,
+        .pending_capacity = @intCast(pending_capacity),
         .launch = launch,
     }) catch {
         std.heap.c_allocator.destroy(owned);

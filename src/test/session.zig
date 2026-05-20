@@ -44,7 +44,7 @@ test "session flushes outbound input deterministically" {
     try session_state.publishHostInput("ping");
 
     const drained = session_state.flushOutboundInput();
-    try std.testing.expectEqual(@as(usize, 4), drained);
+    try std.testing.expectEqual(@as(u32, 4), drained);
     try std.testing.expectEqualStrings("ping", mem_pty.tx.items);
     try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_fed);
     try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_applied);
@@ -71,11 +71,11 @@ test "session preserves remainder after partial transport write" {
     try session_state.start();
     try session_state.publishHostInput("abcdef");
 
-    try std.testing.expectEqual(@as(usize, 3), session_state.flushOutboundInput());
+    try std.testing.expectEqual(@as(u32, 3), session_state.flushOutboundInput());
     try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
     try std.testing.expectEqualStrings("def", session_state.pending.items);
 
-    try std.testing.expectEqual(@as(usize, 3), session_state.flushOutboundInput());
+    try std.testing.expectEqual(@as(u32, 3), session_state.flushOutboundInput());
     try std.testing.expectEqualStrings("abcdef", partial_pty.tx.items);
     try std.testing.expectEqual(@as(usize, 0), session_state.pending.items.len);
 }
@@ -98,14 +98,14 @@ test "session pumps outbound input and reports readable wait policy" {
 
     const idle = session_state.pumpOutboundInput(false);
     try std.testing.expect(!idle.had_pending);
-    try std.testing.expectEqual(@as(usize, 0), idle.drained);
+    try std.testing.expectEqual(@as(u32, 0), idle.drained);
     try std.testing.expect(!idle.has_pending);
     try std.testing.expect(idle.wait_readable);
 
     try session_state.publishHostInput("abcdef");
     const active = session_state.pumpOutboundInput(false);
     try std.testing.expect(active.had_pending);
-    try std.testing.expectEqual(@as(usize, 3), active.drained);
+    try std.testing.expectEqual(@as(u32, 3), active.drained);
     try std.testing.expect(active.has_pending);
     try std.testing.expect(!active.wait_readable);
     try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
@@ -130,7 +130,7 @@ test "session publishes and pumps host input for thread backlog" {
 
     const pumped = try session_state.publishHostInputAndPump("hello");
     try std.testing.expect(pumped.had_pending);
-    try std.testing.expectEqual(@as(usize, 2), pumped.drained);
+    try std.testing.expectEqual(@as(u32, 2), pumped.drained);
     try std.testing.expect(pumped.has_pending);
     try std.testing.expect(!pumped.wait_readable);
     try std.testing.expectEqualStrings("he", partial_pty.tx.items);

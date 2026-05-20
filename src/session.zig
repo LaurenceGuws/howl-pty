@@ -8,14 +8,14 @@ pub const OwnedTransport = pty_api.OwnedPty;
 pub const LaunchConfig = pty_api.LaunchConfig;
 pub const ControlSignal = pty_api.ControlSignal;
 
-const TransportReadLimit = u32;
-const TransportByteLimit = u32;
+pub const TransportReadLimit = u32;
+pub const TransportByteLimit = u32;
 /// Session initialization config.
 pub const Config = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
-    pending_capacity: usize,
+    pending_capacity: TransportByteLimit,
     pty: ?Pty = null,
 };
 
@@ -24,7 +24,7 @@ pub const OwnedTransportConfig = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
-    pending_capacity: usize,
+    pending_capacity: TransportByteLimit,
     transport: OwnedTransport,
 };
 
@@ -33,7 +33,7 @@ pub const PtyConfig = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
-    pending_capacity: usize,
+    pending_capacity: TransportByteLimit,
     launch: LaunchConfig = .{},
 };
 /// Session lifecycle status.
@@ -72,7 +72,7 @@ pub const TransportPumpResult = struct {
 /// Result of one outbound input pump pass.
 pub const OutboundInputPump = struct {
     had_pending: bool = false,
-    drained: usize = 0,
+    drained: TransportByteLimit = 0,
     has_pending: bool = false,
     wait_readable: bool = false,
 };
@@ -118,7 +118,7 @@ pub const Session = struct {
     rows: u16,
     status: Status,
     pending: std.ArrayListUnmanaged(u8),
-    pending_capacity: usize,
+    pending_capacity: TransportByteLimit,
     pty: ?Pty,
     owned_transport: ?OwnedTransport,
     resize_count: u32,
@@ -230,8 +230,13 @@ pub const Session = struct {
     /// Publish host input bytes into the pending outbound queue.
     pub fn publishHostInput(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!void {
         if (bytes.len == 0) return;
-        std.debug.assert(self.pending.items.len <= self.pending_capacity);
-        const projected_len = std.math.add(usize, self.pending.items.len, bytes.len) catch {
+        const pending_len = pendingInputBytes(self);
+        std.debug.assert(pending_len <= self.pending_capacity);
+        if (bytes.len > std.math.maxInt(TransportByteLimit)) {
+            self.ops.feed_rejected += 1;
+            return error.QueueFull;
+        }
+        const projected_len = std.math.add(TransportByteLimit, pending_len, @intCast(bytes.len)) catch {
             self.ops.feed_rejected += 1;
             return error.QueueFull;
         };
@@ -240,15 +245,15 @@ pub const Session = struct {
             return error.QueueFull;
         }
         try self.pending.appendSlice(self.allocator, bytes);
-        std.debug.assert(self.pending.items.len == projected_len);
-        std.debug.assert(self.pending.items.len <= self.pending_capacity);
+        std.debug.assert(pendingInputBytes(self) == projected_len);
+        std.debug.assert(pendingInputBytes(self) <= self.pending_capacity);
         self.ops.feed_accepted += 1;
         self.ops.bytes_fed += bytes.len;
     }
 
     /// Flush queued outbound input bytes to transport and return drained count.
     /// This call is non-throwing: transport write failures are reflected in `ops`.
-    pub fn flushOutboundInput(self: *Session) usize {
+    pub fn flushOutboundInput(self: *Session) TransportByteLimit {
         self.ops.apply_calls += 1;
         const drained = flushOutboundPhase(self);
         self.ops.bytes_applied += drained;
@@ -303,19 +308,19 @@ pub const Session = struct {
     }
 
     /// Read transport bytes into caller buffer.
-    pub fn readTransport(self: *Session, buf: []u8) usize {
+    pub fn readTransport(self: *Session, buf: []u8) TransportByteLimit {
         if (buf.len == 0) return 0;
         const t = self.pty orelse return 0;
         const n = t.read(buf) catch |err| return handleReadError(self, err);
         std.debug.assert(n <= buf.len);
-        return n;
+        return @intCast(n);
     }
 
     /// Read one transport chunk and deliver it to sink.
-    pub fn ingestTransport(self: *Session, scratch: []u8, sink: anytype) usize {
+    pub fn ingestTransport(self: *Session, scratch: []u8, sink: anytype) TransportByteLimit {
         const n = self.readTransport(scratch);
         if (n == 0) return 0;
-        sink.onTransportBytes(scratch[0..n]);
+        sink.onTransportBytes(scratch[0..@intCast(n)]);
         return n;
     }
 
@@ -350,36 +355,41 @@ pub const Session = struct {
         };
     }
 
-    fn flushOutboundPhase(self: *Session) usize {
-        std.debug.assert(self.pending.items.len <= self.pending_capacity);
-        const pending_len = self.pending.items.len;
+    fn flushOutboundPhase(self: *Session) TransportByteLimit {
+        const pending_len = pendingInputBytes(self);
+        std.debug.assert(pending_len <= self.pending_capacity);
         if (pending_len == 0) return 0;
         if (self.pty) |t| return flushOutboundToTransport(self, t, pending_len);
         self.pending.clearRetainingCapacity();
         return pending_len;
     }
 
-    fn flushOutboundToTransport(self: *Session, t: Pty, pending_len: usize) usize {
+    fn flushOutboundToTransport(self: *Session, t: Pty, pending_len: TransportByteLimit) TransportByteLimit {
         std.debug.assert(pending_len > 0);
         const written = t.write(self.pending.items) catch |err| return handleWriteError(self, err);
         std.debug.assert(written <= pending_len);
-        trimPendingPrefix(self, written, pending_len);
-        return written;
+        trimPendingPrefix(self, @intCast(written), pending_len);
+        return @intCast(written);
     }
 
-    fn trimPendingPrefix(self: *Session, drained: usize, pending_len: usize) void {
+    fn trimPendingPrefix(self: *Session, drained: TransportByteLimit, pending_len: TransportByteLimit) void {
         std.debug.assert(drained <= pending_len);
         if (drained == pending_len) {
             self.pending.clearRetainingCapacity();
             return;
         }
         if (drained == 0) return;
-        std.mem.copyForwards(u8, self.pending.items[0 .. pending_len - drained], self.pending.items[drained..pending_len]);
-        self.pending.shrinkRetainingCapacity(pending_len - drained);
-        std.debug.assert(self.pending.items.len == pending_len - drained);
+        const kept = pending_len - drained;
+        std.mem.copyForwards(
+            u8,
+            self.pending.items[0..@intCast(kept)],
+            self.pending.items[@intCast(drained)..@intCast(pending_len)],
+        );
+        self.pending.shrinkRetainingCapacity(@intCast(kept));
+        std.debug.assert(pendingInputBytes(self) == kept);
     }
 
-    fn handleWriteError(self: *Session, err: anyerror) usize {
+    fn handleWriteError(self: *Session, err: anyerror) TransportByteLimit {
         return switch (err) {
             error.WouldBlock, error.Interrupted => 0,
             else => {
@@ -400,7 +410,7 @@ pub const Session = struct {
         };
     }
 
-    fn handleReadError(self: *Session, err: anyerror) usize {
+    fn handleReadError(self: *Session, err: anyerror) TransportByteLimit {
         return switch (err) {
             error.WouldBlock, error.Interrupted => 0,
             error.NotStarted => {
@@ -412,6 +422,11 @@ pub const Session = struct {
                 return 0;
             },
         };
+    }
+
+    fn pendingInputBytes(self: *const Session) TransportByteLimit {
+        std.debug.assert(self.pending.items.len <= std.math.maxInt(TransportByteLimit));
+        return @intCast(self.pending.items.len);
     }
 
     /// Send control signal to transport child process.
