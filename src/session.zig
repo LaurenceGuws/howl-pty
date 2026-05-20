@@ -88,7 +88,8 @@ const normal_transport_bytes: TransportByteLimit = 1024 * 1024;
 const normal_transport_reads: TransportReadLimit = 16;
 // Constrained mode exists for proofs that need tighter interleaving while
 // preserving the same Session-owned chunk shape: two 64 KiB reads, or 128 KiB
-// total, before the owner thread must reschedule.
+// total, before the owner thread must reschedule. This is a proof mode, not a
+// new product throughput policy.
 const constrained_transport_bytes: TransportByteLimit = 128 * 1024;
 const constrained_transport_reads: TransportReadLimit = 2;
 
