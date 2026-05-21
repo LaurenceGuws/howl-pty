@@ -207,7 +207,11 @@ test "session pumps bounded transport reads into caller sink" {
     defer out.deinit(allocator);
     var scratch: [3]u8 = undefined;
 
-    const result = session_state.pumpTransport(scratch[0..], Sink{ .out = &out, .allocator = allocator }, .{ .max_reads = 2, .max_bytes = 5 });
+    const result = session_state.pumpTransport(scratch[0..], Sink{ .out = &out, .allocator = allocator }, .{
+        .chunk_bytes = session.transport_chunk_bytes,
+        .max_reads = 2,
+        .max_bytes = 5,
+    });
     try std.testing.expect(result.any_read);
     try std.testing.expectEqual(@as(u32, 2), result.reads);
     try std.testing.expectEqual(@as(u32, 5), result.bytes_read);
@@ -237,7 +241,9 @@ test "session owns transport pump modes" {
     const Sink = struct {
         pub fn onTransportBytes(_: @This(), _: []const u8) void {}
     };
-    var scratch: [64 * 1024]u8 = undefined;
+    const limits = session.Session.transportPumpLimits(.normal);
+    try std.testing.expectEqual(session.transport_chunk_bytes, limits.chunk_bytes);
+    var scratch: [session.transport_chunk_bytes]u8 = undefined;
 
     const constrained = session_state.pumpTransportMode(scratch[0..], Sink{}, .constrained);
     try std.testing.expect(constrained.any_read);
@@ -248,6 +254,9 @@ test "session owns transport pump modes" {
     try std.testing.expect(normal.any_read);
     try std.testing.expectEqual(@as(u32, 2), normal.reads);
     try std.testing.expectEqual(@as(u32, 72 * 1024), normal.bytes_read);
+
+    const constrained_limits = session.Session.transportPumpLimits(.constrained);
+    try std.testing.expectEqual(session.transport_chunk_bytes, constrained_limits.chunk_bytes);
 }
 
 test "session restore normalizes active snapshots to stopped" {

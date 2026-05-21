@@ -10,7 +10,7 @@ It does not model terminal semantics. It owns queueing, transport start and stop
 ## Public Surface
 - The only shipped embedding contract is `include/howl_pty.h` plus `howl_pty_*` exported symbols.
 - The only public root that may export that contract is `src/libhowl_pty.zig`.
-- Opaque session handles plus typed status, snapshot, pump, and read structs are the public ABI.
+- Opaque session handles plus typed status, snapshot, pump, read, and transport-limit structs are the public ABI.
 - `src/howl_pty.zig` is not an embedding surface. If it survives, it is repo-local only.
 - Internal workspace wiring is not a public contract and is not a preservation target.
 - Accepted cleanup results now locked:
@@ -100,7 +100,7 @@ sequenceDiagram
 - child shell environment policy such as `TERM` advertisement or prompt customization is not PTY
   ownership. PTY launch inherits host-owned environment policy and performs session wiring, cwd, and
   exec only.
-- `howl_pty_transport_pump_limits` exposes the Session-owned named read burst policy so hosts can select a transport mode without inventing local PTY read budgets.
+- `HOWL_PTY_TRANSPORT_CHUNK_BYTES` and `howl_pty_transport_pump_limits` expose the Session-owned transport read chunk and named burst policy so hosts can size scratch buffers and select a transport mode without inventing local PTY read budgets.
 - `howl_pty_session_publish_signal` publishes one typed PTY control signal from the shipped `HowlPtyControlSignal` contract.
 - `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.
 - queued outbound input remains Session-owned until a transport is attached and accepts bytes; the Session must not silently discard backlog because a transport is absent.
@@ -112,6 +112,7 @@ sequenceDiagram
 
 ## Internal Owner API
 - `Session.initPty` is repo-local owner API for build-selected transport construction.
+- `session.transport_chunk_bytes` and `Session.transportPumpLimits(mode)` are the repo-local owner API for the bounded transport read chunk and per-mode burst limits.
 - The repo-local `Pty.start(cols, rows)` contract consumes Session-owned startup geometry directly.
   Concrete PTY owners must not invent a transport-local default grid before child steady state.
 - It is not part of the shipped C ABI contract.

@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const pty = @import("pty.zig");
 const session = @import("session.zig");
@@ -42,6 +41,7 @@ pub const FfiReadResult = extern struct {
 
 pub const FfiTransportPumpLimits = extern struct {
     status: i32 = @intFromEnum(HowlPtyCallStatus.failed),
+    chunk_bytes: u32 = 0,
     max_reads: u32 = 0,
     max_bytes: u32 = 0,
 };
@@ -52,7 +52,7 @@ fn boolByte(value: bool) u8 {
 
 fn sessionFromHandle(handle: SessionHandle) ?*session.Session {
     const raw = handle orelse return null;
-    return @alignCast(@ptrCast(raw));
+    return @ptrCast(@alignCast(raw));
 }
 
 fn bytesIn(ptr: ?[*]const u8, len: usize) ?[]const u8 {
@@ -114,6 +114,7 @@ fn outboundPumpOut(value: session.OutboundInputPump) FfiOutboundPump {
 fn transportPumpLimitsOut(value: session.TransportPumpLimits) FfiTransportPumpLimits {
     return .{
         .status = @intFromEnum(HowlPtyCallStatus.ok),
+        .chunk_bytes = value.chunk_bytes,
         .max_reads = value.max_reads,
         .max_bytes = value.max_bytes,
     };
@@ -281,11 +282,13 @@ test "session ffi publishes typed control signals through the shipped abi" {
 test "transport pump limits ffi exposes shipped PTY burst policy" {
     const normal = transportPumpLimits(@intFromEnum(session.TransportPumpMode.normal));
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlPtyCallStatus.ok)), normal.status);
+    try std.testing.expectEqual(@as(u32, session.transport_chunk_bytes), normal.chunk_bytes);
     try std.testing.expectEqual(@as(u32, 16), normal.max_reads);
     try std.testing.expectEqual(@as(u32, 1024 * 1024), normal.max_bytes);
 
     const constrained = transportPumpLimits(@intFromEnum(session.TransportPumpMode.constrained));
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlPtyCallStatus.ok)), constrained.status);
+    try std.testing.expectEqual(@as(u32, session.transport_chunk_bytes), constrained.chunk_bytes);
     try std.testing.expectEqual(@as(u32, 2), constrained.max_reads);
     try std.testing.expectEqual(@as(u32, 128 * 1024), constrained.max_bytes);
 

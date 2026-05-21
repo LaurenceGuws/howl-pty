@@ -9,6 +9,7 @@ pub const ControlSignal = pty_api.ControlSignal;
 
 pub const TransportReadLimit = u32;
 pub const TransportByteLimit = u32;
+pub const TransportChunkBytes = u32;
 /// Session initialization config.
 pub const Config = struct {
     allocator: std.mem.Allocator,
@@ -51,6 +52,7 @@ pub const Snapshot = struct {
 
 /// Bounds for one nonblocking transport pump pass.
 pub const TransportPumpLimits = struct {
+    chunk_bytes: TransportChunkBytes,
     max_reads: TransportReadLimit,
     max_bytes: TransportByteLimit,
 };
@@ -76,14 +78,15 @@ pub const OutboundInputPump = struct {
     wait_readable: bool = false,
 };
 
+// Alacritty caps one locked PTY read near 64 KiB. Keep that read chunk owned
+// here so hosts can size scratch storage from the PTY contract instead of
+// inventing a second local policy.
+pub const transport_chunk_bytes: TransportChunkBytes = 64 * 1024;
 // Alacritty stages PTY input through a 1 MiB read buffer before it forces a
 // parser synchronization point. Keep the PTY owner's normal burst at the same
 // byte scale so hosts can follow one explicit transport policy through the C
 // ABI instead of inventing smaller local byte limits.
 const normal_transport_bytes: TransportByteLimit = 1024 * 1024;
-// The host scratch chunk is intentionally 64 KiB: close to Alacritty's
-// MAX_LOCKED_READ scale, but rounded so sixteen equal reads cover the full
-// 1 MiB PTY burst without layering a second byte policy on top.
 const normal_transport_reads: TransportReadLimit = 16;
 // Constrained mode exists for proofs that need tighter interleaving while
 // preserving the same Session-owned chunk shape: two 64 KiB reads, or 128 KiB
@@ -91,6 +94,11 @@ const normal_transport_reads: TransportReadLimit = 16;
 // new product throughput policy.
 const constrained_transport_bytes: TransportByteLimit = 128 * 1024;
 const constrained_transport_reads: TransportReadLimit = 2;
+
+comptime {
+    std.debug.assert(normal_transport_reads * transport_chunk_bytes == normal_transport_bytes);
+    std.debug.assert(constrained_transport_reads * transport_chunk_bytes == constrained_transport_bytes);
+}
 
 /// Operation counters for conformance/testing.
 pub const Ops = struct {
@@ -351,8 +359,8 @@ pub const Session = struct {
 
     pub fn transportPumpLimits(mode: TransportPumpMode) TransportPumpLimits {
         return switch (mode) {
-            .normal => .{ .max_reads = normal_transport_reads, .max_bytes = normal_transport_bytes },
-            .constrained => .{ .max_reads = constrained_transport_reads, .max_bytes = constrained_transport_bytes },
+            .normal => .{ .chunk_bytes = transport_chunk_bytes, .max_reads = normal_transport_reads, .max_bytes = normal_transport_bytes },
+            .constrained => .{ .chunk_bytes = transport_chunk_bytes, .max_reads = constrained_transport_reads, .max_bytes = constrained_transport_bytes },
         };
     }
 

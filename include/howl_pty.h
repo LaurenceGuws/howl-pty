@@ -36,6 +36,10 @@ typedef enum {
   HOWL_PTY_TRANSPORT_PUMP_CONSTRAINED = 1,
 } HowlPtyTransportPumpMode;
 
+typedef enum {
+  HOWL_PTY_TRANSPORT_CHUNK_BYTES = 64 * 1024,
+} HowlPtyTransportChunk;
+
 typedef struct {
   int32_t status;
   uint16_t cols;
@@ -66,6 +70,7 @@ typedef struct {
 
 typedef struct {
   int32_t status;
+  uint32_t chunk_bytes;
   uint32_t max_reads;
   uint32_t max_bytes;
 } HowlPtyTransportPumpLimits;
