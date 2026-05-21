@@ -53,6 +53,26 @@ test "session flushes outbound input deterministically" {
     try std.testing.expect(!session_state.isActive());
 }
 
+test "session start applies owned initial size to transport" {
+    const allocator = std.testing.allocator;
+
+    var mem_pty = pty.Mem.init(allocator);
+    defer mem_pty.deinit();
+
+    var session_state = try session.Session.init(.{
+        .allocator = allocator,
+        .cols = 132,
+        .rows = 43,
+        .pending_capacity = 16,
+        .pty = mem_pty.pty(),
+    });
+    defer session_state.deinit();
+
+    try session_state.start();
+    try std.testing.expectEqual(@as(u16, 132), mem_pty.last_cols);
+    try std.testing.expectEqual(@as(u16, 43), mem_pty.last_rows);
+}
+
 test "session preserves remainder after partial transport write" {
     const allocator = std.testing.allocator;
 
