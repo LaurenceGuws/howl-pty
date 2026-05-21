@@ -75,10 +75,10 @@ pub const Mem = struct {
 pub const Partial = struct {
     allocator: std.mem.Allocator,
     started: bool,
-    max_bytes: usize,
+    max_bytes: u32,
     tx: std.ArrayListUnmanaged(u8),
 
-    pub fn init(allocator: std.mem.Allocator, max_bytes: usize) Partial {
+    pub fn init(allocator: std.mem.Allocator, max_bytes: u32) Partial {
         return .{ .allocator = allocator, .started = false, .max_bytes = max_bytes, .tx = .empty };
     }
     pub fn deinit(self: *Partial) void {
@@ -102,9 +102,10 @@ pub const Partial = struct {
     fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
-        const n = @min(bytes.len, self.max_bytes);
-        try self.tx.appendSlice(self.allocator, bytes[0..n]);
-        return n;
+        const byte_count: u32 = @intCast(bytes.len);
+        const n = @min(byte_count, self.max_bytes);
+        try self.tx.appendSlice(self.allocator, bytes[0..@intCast(n)]);
+        return @intCast(n);
     }
     fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
         _ = ptr;

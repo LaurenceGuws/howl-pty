@@ -48,7 +48,7 @@ test "session flushes outbound input deterministically" {
     try std.testing.expectEqualStrings("ping", mem_pty.tx.items);
     try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_fed);
     try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_applied);
-    try std.testing.expectEqual(@as(usize, 0), session_state.pending.items.len);
+    try std.testing.expect(session_state.pending.items.len == 0);
     session_state.stop();
     try std.testing.expect(!session_state.isActive());
 }
@@ -77,7 +77,7 @@ test "session preserves remainder after partial transport write" {
 
     try std.testing.expectEqual(@as(u32, 3), session_state.flushOutboundInput());
     try std.testing.expectEqualStrings("abcdef", partial_pty.tx.items);
-    try std.testing.expectEqual(@as(usize, 0), session_state.pending.items.len);
+    try std.testing.expect(session_state.pending.items.len == 0);
 }
 
 test "session pumps outbound input and reports readable wait policy" {
