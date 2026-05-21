@@ -24,23 +24,25 @@ pub const Mem = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
-    fn startImpl(ptr: *anyopaque) anyerror!void {
+    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
         self.started = true;
+        self.last_cols = cols;
+        self.last_rows = rows;
     }
-    fn stopImpl(ptr: *anyopaque) void {
+    fn stopPty(ptr: *anyopaque) void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         self.started = false;
     }
-    fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         try self.tx.appendSlice(self.allocator, bytes);
         return bytes.len;
     }
-    fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
+    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         const n = @min(buf.len, self.rx.items.len);
@@ -51,22 +53,22 @@ pub const Mem = struct {
         self.rx.shrinkRetainingCapacity(remaining);
         return n;
     }
-    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         _ = timeout_ms;
         return self.rx.items.len > 0;
     }
-    fn kickWaitImpl(ptr: *anyopaque) void {
+    fn kickWaitPty(ptr: *anyopaque) void {
         _ = ptr;
     }
-    fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         self.last_cols = cols;
         self.last_rows = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         self.last_signal = signal;
     }
@@ -89,17 +91,19 @@ pub const Partial = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
-    fn startImpl(ptr: *anyopaque) anyerror!void {
+    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
+        _ = cols;
+        _ = rows;
         self.started = true;
     }
-    fn stopImpl(ptr: *anyopaque) void {
+    fn stopPty(ptr: *anyopaque) void {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         self.started = false;
     }
-    fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         const byte_count: u32 = @intCast(bytes.len);
@@ -107,25 +111,25 @@ pub const Partial = struct {
         try self.tx.appendSlice(self.allocator, bytes[0..@intCast(n)]);
         return @intCast(n);
     }
-    fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
+    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
         _ = ptr;
         _ = buf;
         return 0;
     }
-    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         _ = ptr;
         _ = timeout_ms;
         return false;
     }
-    fn kickWaitImpl(ptr: *anyopaque) void {
+    fn kickWaitPty(ptr: *anyopaque) void {
         _ = ptr;
     }
-    fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         _ = ptr;
         _ = cols;
         _ = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         _ = ptr;
         _ = signal;
     }
@@ -142,39 +146,41 @@ pub const Fail = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
-    fn startImpl(ptr: *anyopaque) anyerror!void {
-        _ = ptr;
-        return error.Failed;
-    }
-    fn stopImpl(ptr: *anyopaque) void {
-        _ = ptr;
-    }
-    fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
-        _ = ptr;
-        _ = bytes;
-        return error.Failed;
-    }
-    fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
-        _ = ptr;
-        _ = buf;
-        return error.Failed;
-    }
-    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
-        _ = ptr;
-        _ = timeout_ms;
-        return error.Failed;
-    }
-    fn kickWaitImpl(ptr: *anyopaque) void {
-        _ = ptr;
-    }
-    fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         _ = ptr;
         _ = cols;
         _ = rows;
         return error.Failed;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn stopPty(ptr: *anyopaque) void {
+        _ = ptr;
+    }
+    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+        _ = ptr;
+        _ = bytes;
+        return error.Failed;
+    }
+    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
+        _ = ptr;
+        _ = buf;
+        return error.Failed;
+    }
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+        _ = ptr;
+        _ = timeout_ms;
+        return error.Failed;
+    }
+    fn kickWaitPty(ptr: *anyopaque) void {
+        _ = ptr;
+    }
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+        _ = ptr;
+        _ = cols;
+        _ = rows;
+        return error.Failed;
+    }
+    fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         _ = ptr;
         _ = signal;
     }

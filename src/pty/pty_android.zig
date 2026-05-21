@@ -37,7 +37,7 @@ pub const AndroidPty = struct {
     }
 
     pub fn deinit(self: *AndroidPty) void {
-        self.stopInternal();
+        self.stopTransport();
         self.allocator.free(self.shell_path);
         if (self.command) |cmd| self.allocator.free(cmd);
         if (self.start_path) |path| self.allocator.free(path);
@@ -48,8 +48,10 @@ pub const AndroidPty = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    fn startInternal(self: *AndroidPty) anyerror!void {
+    fn startTransport(self: *AndroidPty, cols: u16, rows: u16) anyerror!void {
         if (self.started) return error.AlreadyStarted;
+        std.debug.assert(cols > 0);
+        std.debug.assert(rows > 0);
         try common.requireExecutable(self.shell_path);
         const master_fd = c.open("/dev/ptmx", c.O_RDWR, @as(c_int, 0));
         if (master_fd < 0) return error.OpenPtyFailed;
@@ -70,6 +72,9 @@ pub const AndroidPty = struct {
         slave_fd = c.open(&slave_path_z, c.O_RDWR, @as(c_int, 0));
         if (slave_fd < 0) return error.OpenPtyFailed;
 
+        var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
+        if (c.ioctl(slave_fd, c.TIOCSWINSZ, &winsize) != 0) return error.OpenPtyFailed;
+
         try common.setNonBlocking(@intCast(master_fd));
         const pid = c.fork();
         if (pid < 0) return error.OpenPtyFailed;
@@ -80,12 +85,14 @@ pub const AndroidPty = struct {
         _ = c.close(slave_fd);
         self.master_fd = @intCast(master_fd);
         self.child_pid = pid;
+        self.last_cols = cols;
+        self.last_rows = rows;
         self.started = true;
         std.debug.assert(self.master_fd != null);
         std.debug.assert(self.child_pid != null);
     }
 
-    fn stopInternal(self: *AndroidPty) void {
+    fn stopTransport(self: *AndroidPty) void {
         if (!self.started) return;
         if (self.child_pid) |pid| {
             common.sendGroupSignal(pid, .hangup);
@@ -111,16 +118,16 @@ pub const AndroidPty = struct {
         }
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
-    fn startImpl(ptr: *anyopaque) anyerror!void {
+    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
-        try self.startInternal();
+        try self.startTransport(cols, rows);
     }
-    fn stopImpl(ptr: *anyopaque) void {
+    fn stopPty(ptr: *anyopaque) void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
-        self.stopInternal();
+        self.stopTransport();
     }
-    fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
@@ -135,7 +142,7 @@ pub const AndroidPty = struct {
         }
         return @intCast(n);
     }
-    fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
+    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
@@ -151,7 +158,7 @@ pub const AndroidPty = struct {
         if (n == 0) return error.EndOfStream;
         return @intCast(n);
     }
-    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
@@ -166,10 +173,10 @@ pub const AndroidPty = struct {
         }
         return (fds[0].revents & posix.POLL.IN) != 0;
     }
-    fn kickWaitImpl(ptr: *anyopaque) void {
+    fn kickWaitPty(ptr: *anyopaque) void {
         _ = ptr;
     }
-    fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
@@ -177,7 +184,7 @@ pub const AndroidPty = struct {
         self.last_cols = cols;
         self.last_rows = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
         if (self.child_pid) |pid| common.sendSignal(pid, signal);

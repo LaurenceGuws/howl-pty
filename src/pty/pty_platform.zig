@@ -26,7 +26,7 @@ pub const Pty = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        start: *const fn (ptr: *anyopaque) anyerror!void,
+        start: *const fn (ptr: *anyopaque, cols: u16, rows: u16) anyerror!void,
         stop: *const fn (ptr: *anyopaque) void,
         write: *const fn (ptr: *anyopaque, bytes: []const u8) anyerror!usize,
         read: *const fn (ptr: *anyopaque, buf: []u8) anyerror!usize,
@@ -36,8 +36,8 @@ pub const Pty = struct {
         control: *const fn (ptr: *anyopaque, signal: ControlSignal) void,
     };
 
-    pub fn start(self: Pty) anyerror!void {
-        return self.vtable.start(self.ptr);
+    pub fn start(self: Pty, cols: u16, rows: u16) anyerror!void {
+        return self.vtable.start(self.ptr, cols, rows);
     }
     pub fn stop(self: Pty) void {
         self.vtable.stop(self.ptr);

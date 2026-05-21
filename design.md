@@ -108,6 +108,8 @@ sequenceDiagram
 
 ## Internal Owner API
 - `Session.initPty` is repo-local owner API for build-selected transport construction.
+- The repo-local `Pty.start(cols, rows)` contract consumes Session-owned startup geometry directly.
+  Concrete PTY owners must not invent a transport-local default grid before child steady state.
 - It is not part of the shipped C ABI contract.
 
 ## Non-Goals

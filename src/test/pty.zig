@@ -8,7 +8,7 @@ test "pty control signals stay typed across the interface" {
     var mem_pty = pty.Mem.init(allocator);
     defer mem_pty.deinit();
 
-    try mem_pty.pty().start();
+    try mem_pty.pty().start(80, 24);
     defer mem_pty.pty().stop();
 
     mem_pty.pty().control(.terminate);
@@ -20,7 +20,7 @@ test "pty doubles share resize and write semantics through the interface" {
 
     var mem_pty = pty.Mem.init(allocator);
     defer mem_pty.deinit();
-    try mem_pty.pty().start();
+    try mem_pty.pty().start(80, 24);
     defer mem_pty.pty().stop();
 
     try mem_pty.pty().resize(132, 43);
@@ -37,7 +37,7 @@ test "partial pty preserves partial-write semantics through the interface" {
 
     var partial = pty.Partial.init(allocator, 2);
     defer partial.deinit();
-    try partial.pty().start();
+    try partial.pty().start(80, 24);
     defer partial.pty().stop();
 
     try std.testing.expectEqual(@as(usize, 2), try partial.pty().write("abcd"));
@@ -49,7 +49,7 @@ test "fail pty surfaces transport errors instead of swallowing them" {
     defer fail_pty.deinit();
     var buf = [_]u8{0};
 
-    try std.testing.expectError(error.Failed, fail_pty.pty().start());
+    try std.testing.expectError(error.Failed, fail_pty.pty().start(80, 24));
     try std.testing.expectError(error.Failed, fail_pty.pty().write("x"));
     try std.testing.expectError(error.Failed, fail_pty.pty().read(buf[0..]));
     try std.testing.expectError(error.Failed, fail_pty.pty().waitReadable(1));

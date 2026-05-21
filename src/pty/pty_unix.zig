@@ -36,7 +36,7 @@ pub const UnixPty = struct {
     }
 
     pub fn deinit(self: *UnixPty) void {
-        self.stopInternal();
+        self.stopTransport();
         self.allocator.free(self.shell_path);
         if (self.command) |cmd| self.allocator.free(cmd);
         if (self.start_path) |path| self.allocator.free(path);
@@ -47,13 +47,15 @@ pub const UnixPty = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    fn startInternal(self: *UnixPty) anyerror!void {
+    fn startTransport(self: *UnixPty, cols: u16, rows: u16) anyerror!void {
         if (self.started) return error.AlreadyStarted;
+        std.debug.assert(cols > 0);
+        std.debug.assert(rows > 0);
         try common.requireExecutable(self.shell_path);
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
         var wake_fds = [_]c_int{ -1, -1 };
-        var winsize = c.struct_winsize{ .ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0 };
+        var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.openpty(&master_fd, &slave_fd, null, null, &winsize) != 0) return error.OpenPtyFailed;
         if (c.pipe(&wake_fds) != 0) return error.OpenPtyFailed;
         try common.setNonBlocking(@intCast(wake_fds[0]));
@@ -78,6 +80,8 @@ pub const UnixPty = struct {
         self.wake_read_fd = @intCast(wake_fds[0]);
         self.wake_write_fd = @intCast(wake_fds[1]);
         self.child_pid = pid;
+        self.last_cols = cols;
+        self.last_rows = rows;
         self.started = true;
         std.debug.assert(self.master_fd != null);
         std.debug.assert(self.wake_read_fd != null);
@@ -85,7 +89,7 @@ pub const UnixPty = struct {
         std.debug.assert(self.child_pid != null);
     }
 
-    fn stopInternal(self: *UnixPty) void {
+    fn stopTransport(self: *UnixPty) void {
         if (!self.started) return;
         if (self.wake_write_fd) |fd| {
             var byte: [1]u8 = .{1};
@@ -121,16 +125,16 @@ pub const UnixPty = struct {
         }
     }
 
-    const vtable: Pty.VTable = .{ .start = startImpl, .stop = stopImpl, .write = writeImpl, .read = readImpl, .wait_readable = waitReadableImpl, .kick_wait = kickWaitImpl, .resize = resizeImpl, .control = controlImpl };
-    fn startImpl(ptr: *anyopaque) anyerror!void {
+    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
-        try self.startInternal();
+        try self.startTransport(cols, rows);
     }
-    fn stopImpl(ptr: *anyopaque) void {
+    fn stopPty(ptr: *anyopaque) void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
-        self.stopInternal();
+        self.stopTransport();
     }
-    fn writeImpl(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
@@ -145,7 +149,7 @@ pub const UnixPty = struct {
         }
         return @intCast(n);
     }
-    fn readImpl(ptr: *anyopaque, buf: []u8) anyerror!usize {
+    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
@@ -161,7 +165,7 @@ pub const UnixPty = struct {
         if (n == 0) return error.EndOfStream;
         return @intCast(n);
     }
-    fn waitReadableImpl(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
         if (!self.started or self.master_fd == null) return error.NotStarted;
@@ -183,7 +187,7 @@ pub const UnixPty = struct {
         }
         return (fds[0].revents & posix.POLL.IN) != 0;
     }
-    fn kickWaitImpl(ptr: *anyopaque) void {
+    fn kickWaitPty(ptr: *anyopaque) void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
         if (self.wake_write_fd) |fd| {
@@ -191,7 +195,7 @@ pub const UnixPty = struct {
             _ = c.write(fd, &byte, 1);
         }
     }
-    fn resizeImpl(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started or self.master_fd == null) return error.NotStarted;
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
@@ -199,7 +203,7 @@ pub const UnixPty = struct {
         self.last_cols = cols;
         self.last_rows = rows;
     }
-    fn controlImpl(ptr: *anyopaque, signal: ControlSignal) void {
+    fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         if (!self.started) return;
         if (self.child_pid) |pid| common.sendSignal(pid, signal);

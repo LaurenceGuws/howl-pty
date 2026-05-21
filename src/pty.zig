@@ -7,7 +7,7 @@ const doubles = @import("pty/pty_test.zig");
 const unix = @import("pty/pty_unix.zig");
 const android = @import("pty/pty_android.zig");
 
-const PtyImpl = switch (session_options.pty_variant) {
+const SelectedTransport = switch (session_options.pty_variant) {
     .unix_pty => unix.UnixPty,
     .android_pty => android.AndroidPty,
 };
@@ -27,33 +27,32 @@ pub const LaunchConfig = struct {
     start_path: ?[]const u8 = null,
 };
 
-fn initPtyImpl(allocator: std.mem.Allocator, launch: LaunchConfig) !PtyImpl {
+fn createSelectedTransport(allocator: std.mem.Allocator, launch: LaunchConfig) !SelectedTransport {
     return switch (session_options.pty_variant) {
-        .unix_pty => PtyImpl.init(allocator, launch.shell_path orelse "/bin/sh", launch.command, launch.start_path),
-        .android_pty => PtyImpl.init(allocator, launch.shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), launch.command, launch.start_path),
+        .unix_pty => SelectedTransport.init(allocator, launch.shell_path orelse "/bin/sh", launch.command, launch.start_path),
+        .android_pty => SelectedTransport.init(allocator, launch.shell_path orelse (if (builtin.target.abi == .android) "/system/bin/sh" else "/bin/sh"), launch.command, launch.start_path),
     };
 }
 
-const SelectedPtyImpl = PtyImpl;
 const SelectedPtyClass = selected_pty_class;
 
 /// Build-selected PTY owner that keeps the concrete transport behind a boring surface.
 pub const OwnedPty = struct {
-    impl: SelectedPtyImpl,
+    transport: SelectedTransport,
 
     /// Construct the build-selected PTY owner.
     pub fn init(allocator: std.mem.Allocator, launch: LaunchConfig) !OwnedPty {
-        return .{ .impl = try initPtyImpl(allocator, launch) };
+        return .{ .transport = try createSelectedTransport(allocator, launch) };
     }
 
     /// Release the owned PTY transport.
     pub fn deinit(self: *OwnedPty) void {
-        self.impl.deinit();
+        self.transport.deinit();
     }
 
     /// Expose the session-facing PTY transport interface.
     pub fn pty(self: *OwnedPty) platform.Pty {
-        return self.impl.pty();
+        return self.transport.pty();
     }
 
     /// Report the build-selected PTY class.

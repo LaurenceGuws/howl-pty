@@ -183,19 +183,12 @@ pub const Session = struct {
         if (self.status == .active) return error.AlreadyStarted;
         self.bindOwnedTransport();
         if (self.pty) |t| {
-            t.start() catch |err| {
+            // Session owns the current grid size at the lifecycle transition into
+            // active transport state. Starting the transport must consume that size
+            // directly instead of booting at a transport-local default.
+            t.start(self.cols, self.rows) catch |err| {
                 self.ops.start_failures += 1;
                 std.log.err("SES,event=startErr,error={s}", .{@errorName(err)});
-                return err;
-            };
-            errdefer t.stop();
-            // Session owns the current grid size. Apply it before callers trust the
-            // started transport, so child-visible startup geometry cannot drift back
-            // to a transport-local default such as 80x24.
-            t.resize(self.cols, self.rows) catch |err| {
-                self.ops.start_failures += 1;
-                self.ops.resize_transport_errors += 1;
-                std.log.err("SES,event=startResizeErr,error={s},cols={d},rows={d}", .{ @errorName(err), self.cols, self.rows });
                 return err;
             };
         }
