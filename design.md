@@ -97,6 +97,9 @@ sequenceDiagram
 - `howl_pty_session_start` applies the Session-owned initial `cols` and `rows` to the started
   transport before host steady state, so child-visible startup geometry cannot fall back to a
   transport-local default.
+- child shell environment policy such as `TERM` advertisement or prompt customization is not PTY
+  ownership. PTY launch inherits host-owned environment policy and performs session wiring, cwd, and
+  exec only.
 - `howl_pty_transport_pump_limits` exposes the Session-owned named read burst policy so hosts can select a transport mode without inventing local PTY read budgets.
 - `howl_pty_session_publish_signal` publishes one typed PTY control signal from the shipped `HowlPtyControlSignal` contract.
 - `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.

@@ -131,8 +131,8 @@ pub fn childProcess(
     if (c.dup2(slave_fd, 2) < 0) return error.OpenPtyFailed;
     if (slave_fd > 2) _ = c.close(slave_fd);
 
-    _ = c.setenv("TERM", "xterm-256color", 1);
-    _ = c.setenv("PS1", "howl$ ", 1);
+    // PTY launch owns child session wiring, cwd, and exec only.
+    // Host-owned shell environment policy must already be present in std.c.environ here.
     if (cwd) |dir| {
         if (c.chdir(dir) != 0) c._exit(127);
     }
