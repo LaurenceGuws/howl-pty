@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
@@ -19,6 +18,8 @@ pub const AndroidPty = struct {
     start_path_ptr: ?[*:0]u8,
     started: bool,
     master_fd: ?posix.fd_t,
+    wake_read_fd: ?posix.fd_t,
+    wake_write_fd: ?posix.fd_t,
     child_pid: ?posix.pid_t,
     last_cols: u16,
     last_rows: u16,
@@ -33,7 +34,7 @@ pub const AndroidPty = struct {
         errdefer if (start_path_z) |z| allocator.free(z);
         const command_ptr: ?[*:0]u8 = if (command_z) |cmd| @ptrFromInt(@intFromPtr(cmd.ptr)) else null;
         const start_path_ptr: ?[*:0]u8 = if (start_path_z) |path| @ptrFromInt(@intFromPtr(path.ptr)) else null;
-        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .command_ptr = command_ptr, .start_path = start_path_z, .start_path_ptr = start_path_ptr, .started = false, .master_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
+        return .{ .allocator = allocator, .shell_path = shell_z, .command = command_z, .command_ptr = command_ptr, .start_path = start_path_z, .start_path_ptr = start_path_ptr, .started = false, .master_fd = null, .wake_read_fd = null, .wake_write_fd = null, .child_pid = null, .last_cols = 0, .last_rows = 0 };
     }
 
     pub fn deinit(self: *AndroidPty) void {
@@ -56,9 +57,12 @@ pub const AndroidPty = struct {
         const master_fd = c.open("/dev/ptmx", c.O_RDWR, @as(c_int, 0));
         if (master_fd < 0) return error.OpenPtyFailed;
         var slave_fd: c_int = -1;
+        var wake_fds = [_]c_int{ -1, -1 };
         errdefer {
             if (master_fd >= 0) _ = c.close(master_fd);
             if (slave_fd >= 0) _ = c.close(slave_fd);
+            if (wake_fds[0] >= 0) _ = c.close(wake_fds[0]);
+            if (wake_fds[1] >= 0) _ = c.close(wake_fds[1]);
         }
         if (grantpt(master_fd) != 0) return error.OpenPtyFailed;
         if (unlockpt(master_fd) != 0) return error.OpenPtyFailed;
@@ -74,26 +78,39 @@ pub const AndroidPty = struct {
 
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.ioctl(slave_fd, c.TIOCSWINSZ, &winsize) != 0) return error.OpenPtyFailed;
+        if (c.pipe(&wake_fds) != 0) return error.OpenPtyFailed;
+        try common.setNonBlocking(@intCast(wake_fds[0]));
+        try common.setNonBlocking(@intCast(wake_fds[1]));
 
         try common.setNonBlocking(@intCast(master_fd));
         const pid = c.fork();
         if (pid < 0) return error.OpenPtyFailed;
         if (pid == 0) {
-            common.childProcess(@intCast(slave_fd), self.shell_path, self.command_ptr, self.start_path_ptr, applyAndroidShellLayout) catch c._exit(127);
+            _ = c.close(wake_fds[0]);
+            _ = c.close(wake_fds[1]);
+            common.childProcess(@intCast(slave_fd), self.shell_path, self.command_ptr, self.start_path_ptr, null) catch c._exit(127);
             unreachable;
         }
         _ = c.close(slave_fd);
         self.master_fd = @intCast(master_fd);
+        self.wake_read_fd = @intCast(wake_fds[0]);
+        self.wake_write_fd = @intCast(wake_fds[1]);
         self.child_pid = pid;
         self.last_cols = cols;
         self.last_rows = rows;
         self.started = true;
         std.debug.assert(self.master_fd != null);
+        std.debug.assert(self.wake_read_fd != null);
+        std.debug.assert(self.wake_write_fd != null);
         std.debug.assert(self.child_pid != null);
     }
 
     fn stopTransport(self: *AndroidPty) void {
         if (!self.started) return;
+        if (self.wake_write_fd) |fd| {
+            var byte: [1]u8 = .{1};
+            _ = c.write(fd, &byte, 1);
+        }
         if (self.child_pid) |pid| {
             common.sendGroupSignal(pid, .hangup);
             common.sendGroupSignal(pid, .terminate);
@@ -101,10 +118,16 @@ pub const AndroidPty = struct {
             common.reapChildNow(pid);
         }
         if (self.master_fd) |fd| _ = c.close(@intCast(fd));
+        if (self.wake_read_fd) |fd| _ = c.close(@intCast(fd));
+        if (self.wake_write_fd) |fd| _ = c.close(@intCast(fd));
         self.child_pid = null;
         self.master_fd = null;
+        self.wake_read_fd = null;
+        self.wake_write_fd = null;
         self.started = false;
         std.debug.assert(self.master_fd == null);
+        std.debug.assert(self.wake_read_fd == null);
+        std.debug.assert(self.wake_write_fd == null);
         std.debug.assert(self.child_pid == null);
     }
 
@@ -130,7 +153,7 @@ pub const AndroidPty = struct {
     fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
-        if (!self.started or self.master_fd == null) return error.NotStarted;
+        if (!self.transportReady()) return error.NotStarted;
         if (bytes.len == 0) return 0;
         const n = c.write(self.master_fd.?, bytes.ptr, bytes.len);
         if (n < 0) {
@@ -145,7 +168,7 @@ pub const AndroidPty = struct {
     fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
-        if (!self.started or self.master_fd == null) return error.NotStarted;
+        if (!self.transportReady()) return error.NotStarted;
         if (buf.len == 0) return 0;
         const n = c.read(self.master_fd.?, buf.ptr, buf.len);
         if (n < 0) {
@@ -161,24 +184,37 @@ pub const AndroidPty = struct {
     fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
-        if (!self.started or self.master_fd == null) return error.NotStarted;
-        var fds = [_]posix.pollfd{.{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 }};
+        if (!self.transportReady()) return error.NotStarted;
+        std.debug.assert(self.wake_read_fd != null);
+        var fds = [_]posix.pollfd{
+            .{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
+            .{ .fd = self.wake_read_fd orelse return error.NotStarted, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
+        };
         const poll_timeout: i32 = if (timeout_ms < 0) -1 else timeout_ms;
         const ready = try posix.poll(&fds, poll_timeout);
         if (ready <= 0) return false;
+        if ((fds[1].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0) {
+            drainWakePipe(self);
+            return false;
+        }
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
             self.refreshChildState();
-            if (!self.started) return error.NotStarted;
-            std.debug.assert(self.master_fd != null);
+            if (!self.transportReady()) return error.NotStarted;
         }
         return (fds[0].revents & posix.POLL.IN) != 0;
     }
     fn kickWaitPty(ptr: *anyopaque) void {
-        _ = ptr;
+        const self: *AndroidPty = @ptrCast(@alignCast(ptr));
+        if (!self.started) return;
+        if (self.wake_write_fd) |fd| {
+            var byte: [1]u8 = .{1};
+            _ = c.write(fd, &byte, 1);
+        }
     }
     fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
-        if (!self.started or self.master_fd == null) return error.NotStarted;
+        self.refreshChildState();
+        if (!self.transportReady()) return error.NotStarted;
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.ioctl(@intCast(self.master_fd.?), c.TIOCSWINSZ, &winsize) != 0) return error.ResizeFailed;
         self.last_cols = cols;
@@ -186,40 +222,26 @@ pub const AndroidPty = struct {
     }
     fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         const self: *AndroidPty = @ptrCast(@alignCast(ptr));
-        if (!self.started) return;
+        self.refreshChildState();
+        if (!self.transportReady()) return;
         if (self.child_pid) |pid| common.sendSignal(pid, signal);
     }
+
+    fn transportReady(self: *const AndroidPty) bool {
+        if (!self.started) return false;
+        if (self.master_fd == null) return false;
+        if (self.child_pid == null) return false;
+        return true;
+    }
+
+    fn drainWakePipe(self: *AndroidPty) void {
+        const fd = self.wake_read_fd orelse return;
+        var buf: [32]u8 = undefined;
+        const wake_chunk: isize = buf.len;
+        while (true) {
+            const n = c.read(fd, &buf, buf.len);
+            if (n <= 0) return;
+            if (n < wake_chunk) return;
+        }
+    }
 };
-
-fn applyAndroidShellLayout(shell_path: [:0]const u8) void {
-    const shell = shell_path[0..shell_path.len];
-    const marker = "/usr/bin/";
-    const usr_idx = std.mem.indexOf(u8, shell, marker) orelse return;
-    if (usr_idx == 0) return;
-    const app_root = shell[0..usr_idx];
-
-    var app_data_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var prefix_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var home_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var tmp_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var ld_library_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-
-    const app_data = std.fmt.bufPrintZ(&app_data_buf, "{s}", .{app_root}) catch return;
-    const prefix = std.fmt.bufPrintZ(&prefix_buf, "{s}/usr", .{app_root}) catch return;
-    const home = std.fmt.bufPrintZ(&home_buf, "{s}/home", .{app_root}) catch return;
-    const tmp = std.fmt.bufPrintZ(&tmp_buf, "{s}/usr/tmp", .{app_root}) catch return;
-    const path = std.fmt.bufPrintZ(&path_buf, "{s}/usr/bin:/system/bin", .{app_root}) catch return;
-    const ld_library_path = std.fmt.bufPrintZ(&ld_library_path_buf, "{s}/usr/lib", .{app_root}) catch return;
-
-    _ = c.setenv("APP_DATA_DIR", app_data.ptr, 1);
-    _ = c.setenv("PREFIX", prefix.ptr, 1);
-    _ = c.setenv("HOME", home.ptr, 1);
-    _ = c.setenv("TMPDIR", tmp.ptr, 1);
-    _ = c.setenv("PATH", path.ptr, 1);
-    _ = c.setenv("LD_LIBRARY_PATH", ld_library_path.ptr, 1);
-    _ = c.setenv("HOWL_PM_HOST_PLATFORM", "android", 1);
-    _ = c.setenv("SHELL", shell_path.ptr, 1);
-
-    _ = c.chdir(home.ptr);
-}

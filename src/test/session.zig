@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const session = @import("../session.zig");
 const pty = @import("../pty.zig");
@@ -130,6 +129,28 @@ test "session pumps outbound input and reports readable wait policy" {
     try std.testing.expect(!active.wait_readable);
     try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
     try std.testing.expectEqualStrings("def", session_state.pending.items);
+}
+
+test "session preserves outbound input when no transport is attached" {
+    const allocator = std.testing.allocator;
+
+    var session_state = try session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 16,
+    });
+    defer session_state.deinit();
+
+    try session_state.publishHostInput("abc");
+    try std.testing.expectEqual(@as(u32, 0), session_state.flushOutboundInput());
+    try std.testing.expectEqualStrings("abc", session_state.pending.items);
+
+    const pumped = session_state.pumpOutboundInput(false);
+    try std.testing.expect(pumped.had_pending);
+    try std.testing.expectEqual(@as(u32, 0), pumped.drained);
+    try std.testing.expect(pumped.has_pending);
+    try std.testing.expect(!pumped.wait_readable);
 }
 
 test "session publishes and pumps host input for thread backlog" {
@@ -296,6 +317,29 @@ test "session transport attachment is owned by session lifecycle" {
     session_state.stop();
     try session_state.detachPty();
     try std.testing.expectError(error.TransportUnavailable, session_state.publishControlSignal(.terminate));
+}
+
+test "session stops transport on fatal write failure" {
+    const allocator = std.testing.allocator;
+
+    var mem_pty = pty.Mem.init(allocator);
+    defer mem_pty.deinit();
+
+    var session_state = try session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
+        .pty = mem_pty.pty(),
+    });
+    defer session_state.deinit();
+
+    try session_state.start();
+    try session_state.publishHostInput("x");
+    mem_pty.pty().stop();
+
+    try std.testing.expectEqual(@as(u32, 0), session_state.flushOutboundInput());
+    try std.testing.expectEqual(session.Status.stopped, session_state.snapshot().status);
 }
 
 test "session constructs and owns build selected pty transport" {

@@ -103,6 +103,7 @@ sequenceDiagram
 - `howl_pty_transport_pump_limits` exposes the Session-owned named read burst policy so hosts can select a transport mode without inventing local PTY read budgets.
 - `howl_pty_session_publish_signal` publishes one typed PTY control signal from the shipped `HowlPtyControlSignal` contract.
 - `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.
+- queued outbound input remains Session-owned until a transport is attached and accepts bytes; the Session must not silently discard backlog because a transport is absent.
 - `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.
 - `howl_pty_session_resize` and `howl_pty_session_snapshot` cover geometry and state observation.
 - `HowlPtySessionStatus` and `HowlPtyControlSignal` are shipped header-declared contract values.
@@ -125,4 +126,5 @@ sequenceDiagram
 - Delete wrapper namespace roots instead of preserving parallel Zig public stories.
 - Concrete PTY implementations must stay behind `OwnedPty` and `Pty`.
 - Queue policy belongs in `Session`, not in hosts.
+- `Pty.kickWait()` must be able to break `Pty.waitReadable()` on shipped backends so the owner thread can reschedule bounded work without a fake wake path.
 - New transport variants should preserve the same owner/interface split.

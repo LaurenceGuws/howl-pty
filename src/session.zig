@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const pty_api = @import("pty.zig");
 
@@ -215,10 +214,7 @@ pub const Session = struct {
     /// Stop the transport and mark session stopped.
     pub fn stop(self: *Session) void {
         self.ops.stop_calls += 1;
-        if (self.status == .active) {
-            if (self.pty) |t| t.stop();
-        }
-        if (self.owned_transport != null) self.pty = null;
+        stopTransport(self);
         self.status = .stopped;
     }
 
@@ -365,8 +361,7 @@ pub const Session = struct {
         std.debug.assert(pending_len <= self.pending_capacity);
         if (pending_len == 0) return 0;
         if (self.pty) |t| return flushOutboundToTransport(self, t, pending_len);
-        self.pending.clearRetainingCapacity();
-        return pending_len;
+        return 0;
     }
 
     fn flushOutboundToTransport(self: *Session, t: Pty, pending_len: TransportByteLimit) TransportByteLimit {
@@ -399,7 +394,7 @@ pub const Session = struct {
             error.WouldBlock, error.Interrupted => 0,
             else => {
                 self.ops.apply_transport_write_errors += 1;
-                self.status = .stopped;
+                transitionToStopped(self);
                 return 0;
             },
         };
@@ -409,7 +404,7 @@ pub const Session = struct {
         return switch (err) {
             error.WouldBlock, error.Interrupted => false,
             else => {
-                self.status = .stopped;
+                transitionToStopped(self);
                 return false;
             },
         };
@@ -419,14 +414,27 @@ pub const Session = struct {
         return switch (err) {
             error.WouldBlock, error.Interrupted => 0,
             error.NotStarted => {
-                self.status = .stopped;
+                transitionToStopped(self);
                 return 0;
             },
             else => {
-                self.status = .stopped;
+                transitionToStopped(self);
                 return 0;
             },
         };
+    }
+
+    fn transitionToStopped(self: *Session) void {
+        if (self.status == .stopped) return;
+        stopTransport(self);
+        self.status = .stopped;
+    }
+
+    fn stopTransport(self: *Session) void {
+        if (self.status == .active) {
+            if (self.pty) |t| t.stop();
+        }
+        if (self.owned_transport != null) self.pty = null;
     }
 
     fn pendingInputBytes(self: *const Session) TransportByteLimit {

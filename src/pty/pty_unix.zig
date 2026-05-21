@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
@@ -137,7 +136,7 @@ pub const UnixPty = struct {
     fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
-        if (!self.started or self.master_fd == null) return error.NotStarted;
+        if (!self.transportReady()) return error.NotStarted;
         if (bytes.len == 0) return 0;
         const n = c.write(self.master_fd.?, bytes.ptr, bytes.len);
         if (n < 0) {
@@ -152,7 +151,7 @@ pub const UnixPty = struct {
     fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
-        if (!self.started or self.master_fd == null) return error.NotStarted;
+        if (!self.transportReady()) return error.NotStarted;
         if (buf.len == 0) return 0;
         const n = c.read(self.master_fd.?, buf.ptr, buf.len);
         if (n < 0) {
@@ -168,7 +167,7 @@ pub const UnixPty = struct {
     fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
         self.refreshChildState();
-        if (!self.started or self.master_fd == null) return error.NotStarted;
+        if (!self.transportReady()) return error.NotStarted;
         std.debug.assert(self.wake_read_fd != null);
         var fds = [_]posix.pollfd{
             .{ .fd = self.master_fd.?, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
@@ -183,7 +182,7 @@ pub const UnixPty = struct {
         }
         if ((fds[0].revents & posix.POLL.HUP) != 0) {
             self.refreshChildState();
-            if (!self.started) return error.NotStarted;
+            if (!self.transportReady()) return error.NotStarted;
         }
         return (fds[0].revents & posix.POLL.IN) != 0;
     }
@@ -197,7 +196,8 @@ pub const UnixPty = struct {
     }
     fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
-        if (!self.started or self.master_fd == null) return error.NotStarted;
+        self.refreshChildState();
+        if (!self.transportReady()) return error.NotStarted;
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.ioctl(@intCast(self.master_fd.?), c.TIOCSWINSZ, &winsize) != 0) return error.ResizeFailed;
         self.last_cols = cols;
@@ -205,8 +205,16 @@ pub const UnixPty = struct {
     }
     fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         const self: *UnixPty = @ptrCast(@alignCast(ptr));
-        if (!self.started) return;
+        self.refreshChildState();
+        if (!self.transportReady()) return;
         if (self.child_pid) |pid| common.sendSignal(pid, signal);
+    }
+
+    fn transportReady(self: *const UnixPty) bool {
+        if (!self.started) return false;
+        if (self.master_fd == null) return false;
+        if (self.child_pid == null) return false;
+        return true;
     }
 
     fn drainWakePipe(self: *UnixPty) void {

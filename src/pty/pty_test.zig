@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const Pty = @import("pty_platform.zig").Pty;
 const ControlSignal = @import("pty_platform.zig").ControlSignal;
