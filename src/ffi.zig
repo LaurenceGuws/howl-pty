@@ -56,6 +56,7 @@ fn sessionFromHandle(handle: SessionHandle) ?*session.Session {
 }
 
 fn bytesIn(ptr: ?[*]const u8, len: usize) ?[]const u8 {
+    // C callers provide architecture-sized byte counts; translate immediately to a Zig slice.
     if (ptr == null) {
         if (len != 0) return null;
         return &.{};
@@ -64,6 +65,7 @@ fn bytesIn(ptr: ?[*]const u8, len: usize) ?[]const u8 {
 }
 
 fn bytesOut(ptr: ?[*]u8, len: usize) ?[]u8 {
+    // C callers provide architecture-sized buffer capacities; translate immediately to a Zig slice.
     if (ptr == null) {
         if (len != 0) return null;
         return &.{};
@@ -137,6 +139,8 @@ pub fn sessionInit(
     pending_capacity: usize,
 ) callconv(.c) SessionHandle {
     const launch = launchConfigIn(shell_ptr, shell_len, command_ptr, command_len, start_path_ptr, start_path_len) orelse return null;
+    // The shipped PTY ABI still exposes architecture-sized queue capacity at this seam.
+    // Range-check it once, then keep Session ownership typed as TransportByteLimit.
     if (pending_capacity > std.math.maxInt(session.TransportByteLimit)) return null;
     const owned = std.heap.c_allocator.create(session.Session) catch return null;
     owned.* = session.Session.initPty(.{
@@ -201,7 +205,8 @@ pub fn sessionPumpOutbound(handle: SessionHandle, woke: u8) callconv(.c) FfiOutb
 
 pub fn sessionPendingBytes(handle: SessionHandle) callconv(.c) u64 {
     const owned = sessionFromHandle(handle) orelse return 0;
-    return owned.pending.items.len;
+    std.debug.assert(owned.pending.items.len <= std.math.maxInt(u64));
+    return @intCast(owned.pending.items.len);
 }
 
 pub fn sessionBytesApplied(handle: SessionHandle) callconv(.c) u64 {
