@@ -1,6 +1,7 @@
 const std = @import("std");
-const pty = @import("pty.zig");
 const session = @import("session.zig");
+const selected_transport = @import("pty/selected_transport.zig");
+const test_pty = @import("pty/pty_test.zig");
 
 pub const SessionHandle = ?*anyopaque;
 
@@ -80,7 +81,7 @@ fn launchConfigIn(
     command_len: usize,
     start_path_ptr: ?[*]const u8,
     start_path_len: usize,
-) ?pty.LaunchConfig {
+) ?selected_transport.LaunchConfig {
     const shell = bytesIn(shell_ptr, shell_len) orelse return null;
     const command = bytesIn(command_ptr, command_len) orelse return null;
     const start_path = bytesIn(start_path_ptr, start_path_len) orelse return null;
@@ -187,7 +188,7 @@ pub fn sessionResize(handle: SessionHandle, cols: u16, rows: u16) callconv(.c) i
 
 pub fn sessionPublishSignal(handle: SessionHandle, signal: u8) callconv(.c) i32 {
     const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
-    const typed = pty.ControlSignal.fromRaw(signal) catch return @intFromEnum(HowlPtyCallStatus.invalid_argument);
+    const typed = session.ControlSignal.fromRaw(signal) catch return @intFromEnum(HowlPtyCallStatus.invalid_argument);
     owned.publishControlSignal(typed) catch return @intFromEnum(HowlPtyCallStatus.failed);
     return @intFromEnum(HowlPtyCallStatus.ok);
 }
@@ -260,7 +261,7 @@ test "session ffi handle path covers lifecycle and transport progress" {
 
 test "session ffi publishes typed control signals through the shipped abi" {
     const allocator = std.testing.allocator;
-    var mem_pty = pty.Mem.init(allocator);
+    var mem_pty = test_pty.Mem.init(allocator);
     defer mem_pty.deinit();
 
     var state = try session.Session.init(.{
@@ -275,9 +276,9 @@ test "session ffi publishes typed control signals through the shipped abi" {
     const handle: SessionHandle = @ptrCast(&state);
     try std.testing.expectEqual(
         @as(i32, 0),
-        sessionPublishSignal(handle, @intFromEnum(pty.ControlSignal.interrupt)),
+        sessionPublishSignal(handle, @intFromEnum(session.ControlSignal.interrupt)),
     );
-    try std.testing.expectEqual(pty.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try std.testing.expectEqual(session.ControlSignal.interrupt, mem_pty.last_signal.?);
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(HowlPtyCallStatus.invalid_argument)),
         sessionPublishSignal(handle, 0),
@@ -303,7 +304,7 @@ test "transport pump limits ffi exposes shipped PTY burst policy" {
 
 test "session ffi exports the shipped PTY wait wake seam" {
     const allocator = std.testing.allocator;
-    var mem_pty = pty.Mem.init(allocator);
+    var mem_pty = test_pty.Mem.init(allocator);
     defer mem_pty.deinit();
 
     var state = try session.Session.init(.{

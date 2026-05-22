@@ -1,8 +1,9 @@
 const std = @import("std");
 const session = @import("../session.zig");
-const pty = @import("../pty.zig");
+const platform = @import("../pty/pty_platform.zig");
+const pty = @import("../pty/pty_test.zig");
 
-test "session and pty owners stay directly importable" {
+test "session owner and internal pty plumbing interoperate" {
     const allocator = std.testing.allocator;
 
     var mem_pty = pty.Mem.init(allocator);
@@ -18,9 +19,9 @@ test "session and pty owners stay directly importable" {
     defer state.deinit();
 
     try std.testing.expectEqual(session.Status.idle, state.snapshot().status);
-    try std.testing.expectEqual(pty.PtyClass, @TypeOf(pty.pty_class));
-    try std.testing.expectEqual(@as(u8, 15), pty.ControlSignal.terminate.raw());
-    try std.testing.expectEqual(@as(u8, 3), pty.ControlSignal.resize_notify.raw());
+    try std.testing.expectEqual(platform.PtyClass, @TypeOf(@as(platform.PtyClass, .posix_pty)));
+    try std.testing.expectEqual(@as(u8, 15), session.ControlSignal.terminate.raw());
+    try std.testing.expectEqual(@as(u8, 3), session.ControlSignal.resize_notify.raw());
 }
 
 test "session flushes outbound input deterministically" {
@@ -300,7 +301,7 @@ test "session publishes typed control signals through the pty boundary" {
 
     try session_state.attachPty(mem_pty.pty());
     try session_state.publishControlSignal(.interrupt);
-    try std.testing.expectEqual(pty.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try std.testing.expectEqual(session.ControlSignal.interrupt, mem_pty.last_signal.?);
 }
 
 test "session transport attachment is owned by session lifecycle" {

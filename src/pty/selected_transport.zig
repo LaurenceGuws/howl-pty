@@ -1,19 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const session_options = @import("session_options");
-const platform = @import("pty/pty_platform.zig");
-const doubles = @import("pty/pty_test.zig");
-const unix = @import("pty/pty_unix.zig");
-const android = @import("pty/pty_android.zig");
+const platform = @import("pty_platform.zig");
+const unix = @import("pty_unix.zig");
+const android = @import("pty_android.zig");
 
 const SelectedTransport = switch (session_options.pty_variant) {
     .unix_pty => unix.UnixPty,
     .android_pty => android.AndroidPty,
-};
-
-const selected_pty_class = switch (session_options.pty_variant) {
-    .unix_pty => platform.PtyClass.posix_pty,
-    .android_pty => platform.PtyClass.android_pty,
 };
 
 /// Child process launch inputs for the build-selected PTY owner.
@@ -33,42 +27,19 @@ fn createSelectedTransport(allocator: std.mem.Allocator, launch: LaunchConfig) !
     };
 }
 
-const SelectedPtyClass = selected_pty_class;
-
-/// Build-selected PTY owner that keeps the concrete transport behind a boring surface.
-pub const OwnedPty = struct {
+/// Build-selected PTY owner kept behind Session.
+pub const OwnedTransport = struct {
     transport: SelectedTransport,
 
-    /// Construct the build-selected PTY owner.
-    pub fn init(allocator: std.mem.Allocator, launch: LaunchConfig) !OwnedPty {
+    pub fn init(allocator: std.mem.Allocator, launch: LaunchConfig) !OwnedTransport {
         return .{ .transport = try createSelectedTransport(allocator, launch) };
     }
 
-    /// Release the owned PTY transport.
-    pub fn deinit(self: *OwnedPty) void {
+    pub fn deinit(self: *OwnedTransport) void {
         self.transport.deinit();
     }
 
-    /// Expose the session-facing PTY transport interface.
-    pub fn pty(self: *OwnedPty) platform.Pty {
+    pub fn pty(self: *OwnedTransport) platform.Pty {
         return self.transport.pty();
     }
-
-    /// Report the build-selected PTY class.
-    pub fn class(_: OwnedPty) platform.PtyClass {
-        return SelectedPtyClass;
-    }
 };
-
-/// Session-facing PTY interface.
-pub const Pty = platform.Pty;
-pub const PtyClass = platform.PtyClass;
-pub const ControlSignal = platform.ControlSignal;
-
-// test variants
-pub const Mem = doubles.Mem;
-pub const Partial = doubles.Partial;
-pub const Fail = doubles.Fail;
-
-/// Build-selected PTY class value.
-pub const pty_class = SelectedPtyClass;

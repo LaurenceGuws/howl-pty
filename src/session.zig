@@ -1,11 +1,13 @@
 const std = @import("std");
-const pty_api = @import("pty.zig");
+const platform = @import("pty/pty_platform.zig");
+const selected_transport = @import("pty/selected_transport.zig");
 
 /// Canonical session owner surface.
-pub const Pty = pty_api.Pty;
-pub const OwnedTransport = pty_api.OwnedPty;
-pub const LaunchConfig = pty_api.LaunchConfig;
-pub const ControlSignal = pty_api.ControlSignal;
+pub const Pty = platform.Pty;
+pub const ControlSignal = platform.ControlSignal;
+
+const OwnedTransport = selected_transport.OwnedTransport;
+const LaunchConfig = selected_transport.LaunchConfig;
 
 pub const TransportReadLimit = u32;
 pub const TransportByteLimit = u32;
@@ -166,7 +168,7 @@ pub const Session = struct {
     /// Initialize a session that owns a build-selected PTY transport.
     /// This is repo-local owner API, not part of the shipped C ABI contract.
     pub fn initPty(config: PtyConfig) !Session {
-        const transport = try pty_api.OwnedPty.init(config.allocator, config.launch);
+        const transport = try selected_transport.OwnedTransport.init(config.allocator, config.launch);
         return try Session.initOwnedTransport(.{
             .allocator = config.allocator,
             .cols = config.cols,
