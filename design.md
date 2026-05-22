@@ -1,6 +1,6 @@
 # Design
 
-Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
+Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../reference-index.md`](../reference-index.md)
 
 ## Purpose
 `howl-pty` owns PTY-backed child transport orchestration.
