@@ -103,6 +103,7 @@ sequenceDiagram
 - `HOWL_PTY_TRANSPORT_CHUNK_BYTES` and `howl_pty_transport_pump_limits` expose the Session-owned transport read chunk and named burst policy so hosts can size scratch buffers and select a transport mode without inventing local PTY read budgets.
 - `howl_pty_session_publish_signal` publishes one typed PTY control signal from the shipped `HowlPtyControlSignal` contract.
 - `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.
+- `howl_pty_session_kick_wait` is the shipped PTY-owner wake seam for breaking `howl_pty_session_wait_readable` without inventing a host-local fake wake path or transport teardown.
 - queued outbound input remains Session-owned until a transport is attached and accepts bytes; the Session must not silently discard backlog because a transport is absent.
 - `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.
 - `howl_pty_session_resize` and `howl_pty_session_snapshot` cover geometry and state observation.

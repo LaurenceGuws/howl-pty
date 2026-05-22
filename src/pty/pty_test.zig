@@ -10,9 +10,10 @@ pub const Mem = struct {
     last_cols: u16,
     last_rows: u16,
     last_signal: ?ControlSignal,
+    kick_wait_calls: u32,
 
     pub fn init(allocator: std.mem.Allocator) Mem {
-        return .{ .allocator = allocator, .started = false, .rx = .empty, .tx = .empty, .last_cols = 0, .last_rows = 0, .last_signal = null };
+        return .{ .allocator = allocator, .started = false, .rx = .empty, .tx = .empty, .last_cols = 0, .last_rows = 0, .last_signal = null, .kick_wait_calls = 0 };
     }
     pub fn deinit(self: *Mem) void {
         self.rx.deinit(self.allocator);
@@ -59,7 +60,8 @@ pub const Mem = struct {
         return self.rx.items.len > 0;
     }
     fn kickWaitPty(ptr: *anyopaque) void {
-        _ = ptr;
+        const self: *Mem = @ptrCast(@alignCast(ptr));
+        self.kick_wait_calls += 1;
     }
     fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));

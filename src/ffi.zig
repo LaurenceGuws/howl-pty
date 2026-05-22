@@ -210,6 +210,11 @@ pub fn sessionPendingBytes(handle: SessionHandle) callconv(.c) u64 {
     return @intCast(owned.pending.items.len);
 }
 
+pub fn sessionKickWait(handle: SessionHandle) callconv(.c) void {
+    const owned = sessionFromHandle(handle) orelse return;
+    owned.kickTransportWait();
+}
+
 pub fn sessionBytesApplied(handle: SessionHandle) callconv(.c) u64 {
     const owned = sessionFromHandle(handle) orelse return 0;
     return owned.ops.bytes_applied;
@@ -294,4 +299,23 @@ test "transport pump limits ffi exposes shipped PTY burst policy" {
 
     const invalid = transportPumpLimits(99);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlPtyCallStatus.invalid_argument)), invalid.status);
+}
+
+test "session ffi exports the shipped PTY wait wake seam" {
+    const allocator = std.testing.allocator;
+    var mem_pty = pty.Mem.init(allocator);
+    defer mem_pty.deinit();
+
+    var state = try session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
+        .pty = mem_pty.pty(),
+    });
+    defer state.deinit();
+
+    const handle: SessionHandle = @ptrCast(&state);
+    sessionKickWait(handle);
+    try std.testing.expectEqual(@as(u32, 1), mem_pty.kick_wait_calls);
 }

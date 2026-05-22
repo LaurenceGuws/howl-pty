@@ -1,4 +1,3 @@
-
 const ffi = @import("ffi.zig");
 
 comptime {
@@ -11,6 +10,7 @@ comptime {
     @export(&ffi.sessionPublishSignal, .{ .name = "howl_pty_session_publish_signal" });
     @export(&ffi.sessionPublishInput, .{ .name = "howl_pty_session_publish_input" });
     @export(&ffi.sessionPumpOutbound, .{ .name = "howl_pty_session_pump_outbound" });
+    @export(&ffi.sessionKickWait, .{ .name = "howl_pty_session_kick_wait" });
     @export(&ffi.sessionPendingBytes, .{ .name = "howl_pty_session_pending_bytes" });
     @export(&ffi.sessionBytesApplied, .{ .name = "howl_pty_session_bytes_applied" });
     @export(&ffi.sessionWaitReadable, .{ .name = "howl_pty_session_wait_readable" });

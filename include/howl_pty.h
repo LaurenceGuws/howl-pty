@@ -93,6 +93,7 @@ int32_t howl_pty_session_resize(HowlPtySessionHandle handle, uint16_t cols, uint
 int32_t howl_pty_session_publish_signal(HowlPtySessionHandle handle, uint8_t signal);
 int32_t howl_pty_session_publish_input(HowlPtySessionHandle handle, const uint8_t *ptr, size_t len);
 HowlPtyOutboundPump howl_pty_session_pump_outbound(HowlPtySessionHandle handle, uint8_t woke);
+void howl_pty_session_kick_wait(HowlPtySessionHandle handle);
 uint64_t howl_pty_session_pending_bytes(HowlPtySessionHandle handle);
 uint64_t howl_pty_session_bytes_applied(HowlPtySessionHandle handle);
 uint8_t howl_pty_session_wait_readable(HowlPtySessionHandle handle, int32_t timeout_ms);
