@@ -3,6 +3,19 @@ const session = @import("../session.zig");
 const platform = @import("../pty/pty_platform.zig");
 const pty = @import("../pty/pty_test.zig");
 
+fn expectPendingBytes(state: *const session.Session, expected: []const u8) !void {
+    try std.testing.expectEqual(expected.len, state.pending.count);
+    if (state.pending.count == 0) return;
+    const first_len = @min(state.pending.count, state.pending.buffer.len - state.pending.head);
+    const first = state.pending.buffer[state.pending.head .. state.pending.head + first_len];
+    try std.testing.expect(expected.len >= first.len);
+    try std.testing.expectEqualSlices(u8, expected[0..first.len], first);
+
+    const second_len = expected.len - first.len;
+    if (second_len == 0) return;
+    try std.testing.expectEqualSlices(u8, expected[first.len..], state.pending.buffer[0..second_len]);
+}
+
 test "session owner and internal pty plumbing interoperate" {
     const allocator = std.testing.allocator;
 
@@ -48,7 +61,7 @@ test "session flushes outbound input deterministically" {
     try std.testing.expectEqualStrings("ping", mem_pty.tx.items);
     try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_fed);
     try std.testing.expectEqual(@as(u64, 4), session_state.ops.bytes_applied);
-    try std.testing.expect(session_state.pending.items.len == 0);
+    try std.testing.expectEqual(@as(u32, 0), session_state.pending.count);
     session_state.stop();
     try std.testing.expect(!session_state.isActive());
 }
@@ -93,11 +106,11 @@ test "session preserves remainder after partial transport write" {
 
     try std.testing.expectEqual(@as(u32, 3), session_state.flushOutboundInput());
     try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
-    try std.testing.expectEqualStrings("def", session_state.pending.items);
+    try expectPendingBytes(&session_state, "def");
 
     try std.testing.expectEqual(@as(u32, 3), session_state.flushOutboundInput());
     try std.testing.expectEqualStrings("abcdef", partial_pty.tx.items);
-    try std.testing.expect(session_state.pending.items.len == 0);
+    try std.testing.expectEqual(@as(u32, 0), session_state.pending.count);
 }
 
 test "session pumps outbound input and reports readable wait policy" {
@@ -129,7 +142,7 @@ test "session pumps outbound input and reports readable wait policy" {
     try std.testing.expect(active.has_pending);
     try std.testing.expect(!active.wait_readable);
     try std.testing.expectEqualStrings("abc", partial_pty.tx.items);
-    try std.testing.expectEqualStrings("def", session_state.pending.items);
+    try expectPendingBytes(&session_state, "def");
 }
 
 test "session preserves outbound input when no transport is attached" {
@@ -145,13 +158,44 @@ test "session preserves outbound input when no transport is attached" {
 
     try session_state.publishHostInput("abc");
     try std.testing.expectEqual(@as(u32, 0), session_state.flushOutboundInput());
-    try std.testing.expectEqualStrings("abc", session_state.pending.items);
+    try expectPendingBytes(&session_state, "abc");
 
     const pumped = session_state.pumpOutboundInput(false);
     try std.testing.expect(pumped.had_pending);
     try std.testing.expectEqual(@as(u32, 0), pumped.drained);
     try std.testing.expect(pumped.has_pending);
     try std.testing.expect(!pumped.wait_readable);
+}
+
+test "session reuses preallocated outbound queue across wraparound" {
+    const allocator = std.testing.allocator;
+
+    var partial_pty = pty.Partial.init(allocator, 3);
+    defer partial_pty.deinit();
+
+    var session_state = try session.Session.init(.{
+        .allocator = allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 6,
+        .pty = partial_pty.pty(),
+    });
+    defer session_state.deinit();
+    try session_state.start();
+
+    try session_state.publishHostInput("abcdef");
+    try std.testing.expectEqual(@as(u32, 3), session_state.flushOutboundInput());
+    try expectPendingBytes(&session_state, "def");
+
+    try session_state.publishHostInput("gh");
+    try expectPendingBytes(&session_state, "defgh");
+
+    try std.testing.expectEqual(@as(u32, 3), session_state.flushOutboundInput());
+    try expectPendingBytes(&session_state, "gh");
+
+    try std.testing.expectEqual(@as(u32, 2), session_state.flushOutboundInput());
+    try std.testing.expectEqualStrings("abcdefgh", partial_pty.tx.items);
+    try std.testing.expectEqual(@as(u32, 0), session_state.pending.count);
 }
 
 test "session pumps bounded transport reads into caller sink" {

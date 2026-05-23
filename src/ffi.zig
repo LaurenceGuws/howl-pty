@@ -212,8 +212,7 @@ pub fn sessionPumpOutbound(handle: SessionHandle, woke: u8) callconv(.c) FfiOutb
 
 pub fn sessionPendingBytes(handle: SessionHandle) callconv(.c) u64 {
     const owned = sessionFromHandle(handle) orelse return 0;
-    std.debug.assert(owned.pending.items.len <= std.math.maxInt(u64));
-    return @intCast(owned.pending.items.len);
+    return owned.pending.count;
 }
 
 pub fn sessionKickWait(handle: SessionHandle) callconv(.c) void {
