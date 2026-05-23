@@ -1,6 +1,7 @@
 const std = @import("std");
-const Pty = @import("pty_platform.zig").Pty;
-const ControlSignal = @import("pty_platform.zig").ControlSignal;
+const platform = @import("pty_platform.zig");
+const Pty = platform.Pty;
+const ControlSignal = platform.ControlSignal;
 
 pub const Mem = struct {
     allocator: std.mem.Allocator,
@@ -25,7 +26,7 @@ pub const Mem = struct {
     }
 
     const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
-    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
         self.started = true;
@@ -36,13 +37,13 @@ pub const Mem = struct {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         self.started = false;
     }
-    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+    fn writePty(ptr: *anyopaque, bytes: []const u8) Pty.WriteError!usize {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
-        try self.tx.appendSlice(self.allocator, bytes);
+        self.tx.appendSlice(self.allocator, bytes) catch unreachable;
         return bytes.len;
     }
-    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
+    fn readPty(ptr: *anyopaque, buf: []u8) Pty.ReadError!usize {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         const n = @min(buf.len, self.rx.items.len);
@@ -53,7 +54,7 @@ pub const Mem = struct {
         self.rx.shrinkRetainingCapacity(remaining);
         return n;
     }
-    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         _ = timeout_ms;
@@ -63,7 +64,7 @@ pub const Mem = struct {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         self.kick_wait_calls += 1;
     }
-    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) Pty.ResizeError!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         self.last_cols = cols;
@@ -93,7 +94,7 @@ pub const Partial = struct {
     }
 
     const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
-    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
         _ = cols;
@@ -104,20 +105,20 @@ pub const Partial = struct {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         self.started = false;
     }
-    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+    fn writePty(ptr: *anyopaque, bytes: []const u8) Pty.WriteError!usize {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         const byte_count: u32 = @intCast(bytes.len);
         const n = @min(byte_count, self.max_bytes);
-        try self.tx.appendSlice(self.allocator, bytes[0..@intCast(n)]);
+        self.tx.appendSlice(self.allocator, bytes[0..@intCast(n)]) catch unreachable;
         return @intCast(n);
     }
-    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
+    fn readPty(ptr: *anyopaque, buf: []u8) Pty.ReadError!usize {
         _ = ptr;
         _ = buf;
         return 0;
     }
-    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
         _ = ptr;
         _ = timeout_ms;
         return false;
@@ -125,7 +126,7 @@ pub const Partial = struct {
     fn kickWaitPty(ptr: *anyopaque) void {
         _ = ptr;
     }
-    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) Pty.ResizeError!void {
         _ = ptr;
         _ = cols;
         _ = rows;
@@ -148,38 +149,38 @@ pub const Fail = struct {
     }
 
     const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
-    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
         _ = ptr;
         _ = cols;
         _ = rows;
-        return error.Failed;
+        return error.OpenPtyFailed;
     }
     fn stopPty(ptr: *anyopaque) void {
         _ = ptr;
     }
-    fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+    fn writePty(ptr: *anyopaque, bytes: []const u8) Pty.WriteError!usize {
         _ = ptr;
         _ = bytes;
-        return error.Failed;
+        return error.WriteFailed;
     }
-    fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
+    fn readPty(ptr: *anyopaque, buf: []u8) Pty.ReadError!usize {
         _ = ptr;
         _ = buf;
-        return error.Failed;
+        return error.ReadFailed;
     }
-    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
         _ = ptr;
         _ = timeout_ms;
-        return error.Failed;
+        return error.WaitFailed;
     }
     fn kickWaitPty(ptr: *anyopaque) void {
         _ = ptr;
     }
-    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+    fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) Pty.ResizeError!void {
         _ = ptr;
         _ = cols;
         _ = rows;
-        return error.Failed;
+        return error.ResizeFailed;
     }
     fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
         _ = ptr;

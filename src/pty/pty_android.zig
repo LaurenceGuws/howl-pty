@@ -9,13 +9,13 @@ extern "c" fn unlockpt(fd: c_int) c_int;
 extern "c" fn ptsname_r(fd: c_int, buf: [*]u8, buflen: usize) c_int;
 
 pub const AndroidPty = posix_owner.PosixPty(struct {
-    pub fn ensureSupported() !void {
+    pub fn ensureSupported() common.Pty.StartError!void {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos and builtin.os.tag != .android) {
             return error.UnsupportedPlatform;
         }
     }
 
-    pub fn openTransport(cols: u16, rows: u16) !posix_owner.TransportOpen {
+    pub fn openTransport(cols: u16, rows: u16) common.Pty.StartError!posix_owner.TransportOpen {
         const master_fd = c.open("/dev/ptmx", c.O_RDWR, @as(c_int, 0));
         if (master_fd < 0) return error.OpenPtyFailed;
 

@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const platform = @import("../pty/pty_platform.zig");
 const pty = @import("../pty/pty_test.zig");
@@ -50,9 +49,9 @@ test "fail pty surfaces transport errors instead of swallowing them" {
     defer fail_pty.deinit();
     var buf = [_]u8{0};
 
-    try std.testing.expectError(error.Failed, fail_pty.pty().start(80, 24));
-    try std.testing.expectError(error.Failed, fail_pty.pty().write("x"));
-    try std.testing.expectError(error.Failed, fail_pty.pty().read(buf[0..]));
-    try std.testing.expectError(error.Failed, fail_pty.pty().waitReadable(1));
-    try std.testing.expectError(error.Failed, fail_pty.pty().resize(1, 1));
+    try std.testing.expectError(error.OpenPtyFailed, fail_pty.pty().start(80, 24));
+    try std.testing.expectError(error.WriteFailed, fail_pty.pty().write("x"));
+    try std.testing.expectError(error.ReadFailed, fail_pty.pty().read(buf[0..]));
+    try std.testing.expectError(error.WaitFailed, fail_pty.pty().waitReadable(1));
+    try std.testing.expectError(error.ResizeFailed, fail_pty.pty().resize(1, 1));
 }

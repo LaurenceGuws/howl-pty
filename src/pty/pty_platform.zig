@@ -24,36 +24,70 @@ pub const Pty = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    pub const StartError = error{
+        AlreadyStarted,
+        OpenPtyFailed,
+        ShellUnavailable,
+        UnsupportedPlatform,
+    };
+
+    pub const WriteError = error{
+        Interrupted,
+        NotStarted,
+        WouldBlock,
+        WriteFailed,
+    };
+
+    pub const ReadError = error{
+        EndOfStream,
+        Interrupted,
+        NotStarted,
+        ReadFailed,
+        WouldBlock,
+    };
+
+    pub const WaitReadableError = error{
+        Interrupted,
+        NotStarted,
+        WaitFailed,
+        WouldBlock,
+    };
+
+    pub const ResizeError = error{
+        NotStarted,
+        ResizeFailed,
+    };
+
     pub const VTable = struct {
-        start: *const fn (ptr: *anyopaque, cols: u16, rows: u16) anyerror!void,
+        start: *const fn (ptr: *anyopaque, cols: u16, rows: u16) StartError!void,
         stop: *const fn (ptr: *anyopaque) void,
-        write: *const fn (ptr: *anyopaque, bytes: []const u8) anyerror!usize,
-        read: *const fn (ptr: *anyopaque, buf: []u8) anyerror!usize,
-        wait_readable: *const fn (ptr: *anyopaque, timeout_ms: i32) anyerror!bool,
+        write: *const fn (ptr: *anyopaque, bytes: []const u8) WriteError!usize,
+        read: *const fn (ptr: *anyopaque, buf: []u8) ReadError!usize,
+        wait_readable: *const fn (ptr: *anyopaque, timeout_ms: i32) WaitReadableError!bool,
         kick_wait: *const fn (ptr: *anyopaque) void,
-        resize: *const fn (ptr: *anyopaque, cols: u16, rows: u16) anyerror!void,
+        resize: *const fn (ptr: *anyopaque, cols: u16, rows: u16) ResizeError!void,
         control: *const fn (ptr: *anyopaque, signal: ControlSignal) void,
     };
 
-    pub fn start(self: Pty, cols: u16, rows: u16) anyerror!void {
+    pub fn start(self: Pty, cols: u16, rows: u16) StartError!void {
         return self.vtable.start(self.ptr, cols, rows);
     }
     pub fn stop(self: Pty) void {
         self.vtable.stop(self.ptr);
     }
-    pub fn write(self: Pty, bytes: []const u8) anyerror!usize {
+    pub fn write(self: Pty, bytes: []const u8) WriteError!usize {
         return self.vtable.write(self.ptr, bytes);
     }
-    pub fn read(self: Pty, buf: []u8) anyerror!usize {
+    pub fn read(self: Pty, buf: []u8) ReadError!usize {
         return self.vtable.read(self.ptr, buf);
     }
-    pub fn waitReadable(self: Pty, timeout_ms: i32) anyerror!bool {
+    pub fn waitReadable(self: Pty, timeout_ms: i32) WaitReadableError!bool {
         return self.vtable.wait_readable(self.ptr, timeout_ms);
     }
     pub fn kickWait(self: Pty) void {
         self.vtable.kick_wait(self.ptr);
     }
-    pub fn resize(self: Pty, cols: u16, rows: u16) anyerror!void {
+    pub fn resize(self: Pty, cols: u16, rows: u16) ResizeError!void {
         return self.vtable.resize(self.ptr, cols, rows);
     }
     pub fn control(self: Pty, signal: ControlSignal) void {
@@ -99,19 +133,19 @@ pub const PtyClass = enum {
     android_pty,
 };
 
-pub fn setNonBlocking(fd: posix.fd_t) !void {
+pub fn setNonBlocking(fd: posix.fd_t) Pty.StartError!void {
     const flags = c.fcntl(fd, c.F_GETFL, @as(c_int, 0));
     if (flags < 0) return error.OpenPtyFailed;
     if (c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) return error.OpenPtyFailed;
 }
 
-pub fn setCloseOnExec(fd: posix.fd_t) !void {
+pub fn setCloseOnExec(fd: posix.fd_t) Pty.StartError!void {
     const flags = c.fcntl(fd, c.F_GETFD, @as(c_int, 0));
     if (flags < 0) return error.OpenPtyFailed;
     if (c.fcntl(fd, c.F_SETFD, flags | c.FD_CLOEXEC) != 0) return error.OpenPtyFailed;
 }
 
-pub fn requireExecutable(path: [:0]const u8) !void {
+pub fn requireExecutable(path: [:0]const u8) Pty.StartError!void {
     if (c.access(path.ptr, c.X_OK) != 0) return error.ShellUnavailable;
 }
 
@@ -128,7 +162,7 @@ const ChildProcessFds = struct {
     wake_write_fd: ?posix.fd_t,
 };
 
-fn resetChildSignalDispositions() !void {
+fn resetChildSignalDispositions() Pty.StartError!void {
     var sa: posix.Sigaction = .{
         .handler = .{ .handler = posix.SIG.DFL },
         .mask = posix.sigemptyset(),
@@ -149,12 +183,12 @@ fn resetChildSignalDispositions() !void {
     if (c.sigaction(@intFromEnum(posix.SIG.TRAP), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
 }
 
-fn closeChildFdIfNeeded(fd: posix.fd_t) !void {
+fn closeChildFdIfNeeded(fd: posix.fd_t) Pty.StartError!void {
     if (fd <= 2) return;
     if (c.close(@intCast(fd)) != 0) return error.OpenPtyFailed;
 }
 
-fn setupChildProcessFds(fds: ChildProcessFds) !void {
+fn setupChildProcessFds(fds: ChildProcessFds) Pty.StartError!void {
     try resetChildSignalDispositions();
     if (c.setsid() < 0) return error.OpenPtyFailed;
     if (c.ioctl(@intCast(fds.slave_fd), c.TIOCSCTTY, @as(c_ulong, 0)) != 0) return error.OpenPtyFailed;
@@ -176,7 +210,7 @@ pub fn childProcess(
     command: ?[*:0]const u8,
     cwd: ?[*:0]const u8,
     setup: ?ChildProcessSetupFn,
-) !void {
+) Pty.StartError!void {
     try setupChildProcessFds(.{
         .master_fd = master_fd,
         .slave_fd = slave_fd,

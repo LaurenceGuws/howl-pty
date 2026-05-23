@@ -5,13 +5,13 @@ const common = @import("pty_platform.zig");
 const c = common.c;
 
 pub const UnixPty = posix_owner.PosixPty(struct {
-    pub fn ensureSupported() !void {
+    pub fn ensureSupported() common.Pty.StartError!void {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos) {
             return error.UnsupportedPlatform;
         }
     }
 
-    pub fn openTransport(cols: u16, rows: u16) !posix_owner.TransportOpen {
+    pub fn openTransport(cols: u16, rows: u16) common.Pty.StartError!posix_owner.TransportOpen {
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
         var winsize = c.struct_winsize{

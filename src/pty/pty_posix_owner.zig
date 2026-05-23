@@ -39,7 +39,7 @@ pub fn PosixPty(comptime Backend: type) type {
             shell_path: []const u8,
             command: ?[]const u8,
             start_path: ?[]const u8,
-        ) !Self {
+        ) (error{OutOfMemory} || Pty.StartError)!Self {
             try Backend.ensureSupported();
 
             const shell_path_z = try allocator.dupeZ(u8, shell_path);
@@ -80,7 +80,7 @@ pub fn PosixPty(comptime Backend: type) type {
             return .{ .ptr = self, .vtable = &vtable };
         }
 
-        fn startTransport(self: *Self, cols: u16, rows: u16) !void {
+        fn startTransport(self: *Self, cols: u16, rows: u16) Pty.StartError!void {
             if (self.started) return error.AlreadyStarted;
             std.debug.assert(cols > 0);
             std.debug.assert(rows > 0);
@@ -200,7 +200,7 @@ pub fn PosixPty(comptime Backend: type) type {
             .control = controlPty,
         };
 
-        fn startPty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+        fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
             const self: *Self = @ptrCast(@alignCast(ptr));
             try self.startTransport(cols, rows);
         }
@@ -210,7 +210,7 @@ pub fn PosixPty(comptime Backend: type) type {
             self.stopTransport();
         }
 
-        fn writePty(ptr: *anyopaque, bytes: []const u8) anyerror!usize {
+        fn writePty(ptr: *anyopaque, bytes: []const u8) Pty.WriteError!usize {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
@@ -227,7 +227,7 @@ pub fn PosixPty(comptime Backend: type) type {
             return @intCast(n);
         }
 
-        fn readPty(ptr: *anyopaque, buf: []u8) anyerror!usize {
+        fn readPty(ptr: *anyopaque, buf: []u8) Pty.ReadError!usize {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
@@ -245,7 +245,7 @@ pub fn PosixPty(comptime Backend: type) type {
             return @intCast(n);
         }
 
-        fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) anyerror!bool {
+        fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
@@ -256,7 +256,7 @@ pub fn PosixPty(comptime Backend: type) type {
                 .{ .fd = self.wake_read_fd orelse return error.NotStarted, .events = posix.POLL.IN | posix.POLL.HUP, .revents = 0 },
             };
             const poll_timeout: i32 = if (timeout_ms < 0) -1 else timeout_ms;
-            const ready = try posix.poll(&fds, poll_timeout);
+            const ready = posix.poll(&fds, poll_timeout) catch return error.WaitFailed;
             if (ready <= 0) return false;
 
             if ((fds[1].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0) {
@@ -275,7 +275,7 @@ pub fn PosixPty(comptime Backend: type) type {
             self.kickWait();
         }
 
-        fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) anyerror!void {
+        fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) Pty.ResizeError!void {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
@@ -314,7 +314,7 @@ fn closeTransport(transport: TransportOpen) void {
     _ = c.close(@intCast(transport.slave_fd));
 }
 
-fn openWakePipe() !WakePipe {
+fn openWakePipe() Pty.StartError!WakePipe {
     var fds = [_]c_int{ -1, -1 };
     if (c.pipe(&fds) != 0) return error.OpenPtyFailed;
     errdefer {

@@ -130,6 +130,22 @@ fn transportPumpModeIn(mode: u8) ?session.TransportPumpMode {
     };
 }
 
+fn startStatus(err: session.StartError) i32 {
+    return switch (err) {
+        error.AlreadyStarted,
+        error.OpenPtyFailed,
+        error.ShellUnavailable,
+        error.UnsupportedPlatform,
+        => @intFromEnum(HowlPtyCallStatus.failed),
+    };
+}
+
+fn resizeStatus(err: error{InvalidDimensions}) i32 {
+    return switch (err) {
+        error.InvalidDimensions => @intFromEnum(HowlPtyCallStatus.invalid_argument),
+    };
+}
+
 pub fn sessionInit(
     shell_ptr: ?[*]const u8,
     shell_len: usize,
@@ -171,7 +187,7 @@ pub fn sessionDeinit(handle: SessionHandle) callconv(.c) void {
 
 pub fn sessionStart(handle: SessionHandle) callconv(.c) i32 {
     const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
-    owned.start() catch return @intFromEnum(HowlPtyCallStatus.failed);
+    owned.start() catch |err| return startStatus(err);
     return @intFromEnum(HowlPtyCallStatus.ok);
 }
 
@@ -187,7 +203,7 @@ pub fn sessionSnapshot(handle: SessionHandle) callconv(.c) FfiSnapshot {
 
 pub fn sessionResize(handle: SessionHandle, cols: u16, rows: u16) callconv(.c) i32 {
     const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
-    owned.resize(cols, rows) catch return @intFromEnum(HowlPtyCallStatus.invalid_argument);
+    owned.resize(cols, rows) catch |err| return resizeStatus(err);
     return @intFromEnum(HowlPtyCallStatus.ok);
 }
 

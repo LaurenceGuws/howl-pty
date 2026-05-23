@@ -8,6 +8,10 @@ const ControlSignal = platform.ControlSignal;
 
 const OwnedTransport = selected_transport.OwnedTransport;
 
+pub const StartError = Pty.StartError;
+pub const ReadError = Pty.ReadError;
+pub const WaitReadableError = Pty.WaitReadableError;
+
 pub const TransportReadLimit = u32;
 pub const TransportByteLimit = u32;
 pub const TransportChunkBytes = u32;
@@ -243,7 +247,7 @@ pub const Session = struct {
     }
 
     /// Start the transport if configured.
-    pub fn start(self: *Session) !void {
+    pub fn start(self: *Session) StartError!void {
         self.ops.start_attempts += 1;
         if (self.status == .active) return error.AlreadyStarted;
         self.bindOwnedTransport();
@@ -422,7 +426,7 @@ pub const Session = struct {
         std.debug.assert(pendingInputBytes(self) == pending_len - drained);
     }
 
-    fn handleWriteError(self: *Session, err: anyerror) TransportByteLimit {
+    fn handleWriteError(self: *Session, err: Pty.WriteError) TransportByteLimit {
         return switch (err) {
             error.WouldBlock, error.Interrupted => 0,
             else => {
@@ -433,7 +437,7 @@ pub const Session = struct {
         };
     }
 
-    fn handleWaitError(self: *Session, err: anyerror) bool {
+    fn handleWaitError(self: *Session, err: WaitReadableError) bool {
         return switch (err) {
             error.WouldBlock, error.Interrupted => false,
             else => {
@@ -443,7 +447,7 @@ pub const Session = struct {
         };
     }
 
-    fn handleReadError(self: *Session, err: anyerror) TransportByteLimit {
+    fn handleReadError(self: *Session, err: ReadError) TransportByteLimit {
         return switch (err) {
             error.WouldBlock, error.Interrupted => 0,
             error.NotStarted => {
@@ -487,7 +491,7 @@ pub const Session = struct {
     }
 
     /// Update tracked dimensions and propagate to transport.
-    pub fn resize(self: *Session, cols: u16, rows: u16) !void {
+    pub fn resize(self: *Session, cols: u16, rows: u16) error{InvalidDimensions}!void {
         if (cols == 0 or rows == 0) {
             self.ops.resize_invalid_calls += 1;
             return error.InvalidDimensions;
@@ -498,8 +502,10 @@ pub const Session = struct {
         self.resize_count +%= 1;
         self.ops.resize_valid_calls += 1;
 
-        if (self.pty) |t| t.resize(cols, rows) catch {
-            self.ops.resize_transport_errors += 1;
+        if (self.pty) |t| t.resize(cols, rows) catch |err| switch (err) {
+            error.NotStarted, error.ResizeFailed => {
+                self.ops.resize_transport_errors += 1;
+            },
         };
     }
 
@@ -512,5 +518,4 @@ pub const Session = struct {
             .resize_count = self.resize_count,
         };
     }
-
 };
