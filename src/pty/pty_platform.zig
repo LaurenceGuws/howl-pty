@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
@@ -106,6 +105,12 @@ pub fn setNonBlocking(fd: posix.fd_t) !void {
     if (c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) return error.OpenPtyFailed;
 }
 
+pub fn setCloseOnExec(fd: posix.fd_t) !void {
+    const flags = c.fcntl(fd, c.F_GETFD, @as(c_int, 0));
+    if (flags < 0) return error.OpenPtyFailed;
+    if (c.fcntl(fd, c.F_SETFD, flags | c.FD_CLOEXEC) != 0) return error.OpenPtyFailed;
+}
+
 pub fn requireExecutable(path: [:0]const u8) !void {
     if (c.access(path.ptr, c.X_OK) != 0) return error.ShellUnavailable;
 }
@@ -116,20 +121,68 @@ fn cArg(path: [*:0]const u8) [*c]u8 {
 
 pub const ChildProcessSetupFn = *const fn (shell_path: [:0]const u8) void;
 
-pub fn childProcess(
+const ChildProcessFds = struct {
+    master_fd: posix.fd_t,
     slave_fd: posix.fd_t,
+    wake_read_fd: ?posix.fd_t,
+    wake_write_fd: ?posix.fd_t,
+};
+
+fn resetChildSignalDispositions() !void {
+    var sa: posix.Sigaction = .{
+        .handler = .{ .handler = posix.SIG.DFL },
+        .mask = posix.sigemptyset(),
+        .flags = 0,
+    };
+    if (c.sigaction(@intFromEnum(posix.SIG.ABRT), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.ALRM), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.BUS), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.CHLD), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.FPE), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.HUP), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.ILL), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.INT), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.PIPE), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.QUIT), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.SEGV), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.TERM), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.TRAP), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+}
+
+fn closeChildFdIfNeeded(fd: posix.fd_t) !void {
+    if (fd <= 2) return;
+    if (c.close(@intCast(fd)) != 0) return error.OpenPtyFailed;
+}
+
+fn setupChildProcessFds(fds: ChildProcessFds) !void {
+    try resetChildSignalDispositions();
+    if (c.setsid() < 0) return error.OpenPtyFailed;
+    if (c.ioctl(@intCast(fds.slave_fd), c.TIOCSCTTY, @as(c_ulong, 0)) != 0) return error.OpenPtyFailed;
+    if (c.dup2(fds.slave_fd, 0) < 0) return error.OpenPtyFailed;
+    if (c.dup2(fds.slave_fd, 1) < 0) return error.OpenPtyFailed;
+    if (c.dup2(fds.slave_fd, 2) < 0) return error.OpenPtyFailed;
+    try closeChildFdIfNeeded(fds.master_fd);
+    if (fds.wake_read_fd) |fd| try closeChildFdIfNeeded(fd);
+    if (fds.wake_write_fd) |fd| try closeChildFdIfNeeded(fd);
+    try closeChildFdIfNeeded(fds.slave_fd);
+}
+
+pub fn childProcess(
+    master_fd: posix.fd_t,
+    slave_fd: posix.fd_t,
+    wake_read_fd: ?posix.fd_t,
+    wake_write_fd: ?posix.fd_t,
     shell_path: [:0]const u8,
     command: ?[*:0]const u8,
     cwd: ?[*:0]const u8,
     setup: ?ChildProcessSetupFn,
 ) !void {
-    _ = c.setsid();
-    _ = c.ioctl(@intCast(slave_fd), c.TIOCSCTTY, @as(c_ulong, 0));
-
-    if (c.dup2(slave_fd, 0) < 0) return error.OpenPtyFailed;
-    if (c.dup2(slave_fd, 1) < 0) return error.OpenPtyFailed;
-    if (c.dup2(slave_fd, 2) < 0) return error.OpenPtyFailed;
-    if (slave_fd > 2) _ = c.close(slave_fd);
+    try setupChildProcessFds(.{
+        .master_fd = master_fd,
+        .slave_fd = slave_fd,
+        .wake_read_fd = wake_read_fd,
+        .wake_write_fd = wake_write_fd,
+    });
 
     // PTY launch owns child session wiring, cwd, and exec only.
     // Host-owned shell environment policy must already be present in std.c.environ here.

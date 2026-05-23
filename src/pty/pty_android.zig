@@ -66,6 +66,7 @@ pub const AndroidPty = struct {
         }
         if (grantpt(master_fd) != 0) return error.OpenPtyFailed;
         if (unlockpt(master_fd) != 0) return error.OpenPtyFailed;
+        try common.setCloseOnExec(@intCast(master_fd));
         var slave_path_buf: [4096]u8 = undefined;
         if (ptsname_r(master_fd, &slave_path_buf, slave_path_buf.len) != 0) return error.OpenPtyFailed;
         const slave_path = std.mem.sliceTo(&slave_path_buf, 0);
@@ -79,6 +80,8 @@ pub const AndroidPty = struct {
         var winsize = c.struct_winsize{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
         if (c.ioctl(slave_fd, c.TIOCSWINSZ, &winsize) != 0) return error.OpenPtyFailed;
         if (c.pipe(&wake_fds) != 0) return error.OpenPtyFailed;
+        try common.setCloseOnExec(@intCast(wake_fds[0]));
+        try common.setCloseOnExec(@intCast(wake_fds[1]));
         try common.setNonBlocking(@intCast(wake_fds[0]));
         try common.setNonBlocking(@intCast(wake_fds[1]));
 
@@ -86,9 +89,7 @@ pub const AndroidPty = struct {
         const pid = c.fork();
         if (pid < 0) return error.OpenPtyFailed;
         if (pid == 0) {
-            _ = c.close(wake_fds[0]);
-            _ = c.close(wake_fds[1]);
-            common.childProcess(@intCast(slave_fd), self.shell_path, self.command_ptr, self.start_path_ptr, null) catch c._exit(127);
+            common.childProcess(@intCast(master_fd), @intCast(slave_fd), @intCast(wake_fds[0]), @intCast(wake_fds[1]), self.shell_path, self.command_ptr, self.start_path_ptr, null) catch c._exit(127);
             unreachable;
         }
         _ = c.close(slave_fd);
