@@ -20,8 +20,8 @@ test "session owner and internal pty plumbing interoperate" {
 
     try std.testing.expectEqual(session.Status.idle, state.snapshot().status);
     try std.testing.expectEqual(platform.PtyClass, @TypeOf(@as(platform.PtyClass, .posix_pty)));
-    try std.testing.expectEqual(@as(u8, 15), session.ControlSignal.terminate.raw());
-    try std.testing.expectEqual(@as(u8, 3), session.ControlSignal.resize_notify.raw());
+    try std.testing.expectEqual(@as(u8, 15), platform.ControlSignal.terminate.raw());
+    try std.testing.expectEqual(@as(u8, 3), platform.ControlSignal.resize_notify.raw());
 }
 
 test "session flushes outbound input deterministically" {
@@ -154,31 +154,6 @@ test "session preserves outbound input when no transport is attached" {
     try std.testing.expect(!pumped.wait_readable);
 }
 
-test "session publishes and pumps host input for thread backlog" {
-    const allocator = std.testing.allocator;
-
-    var partial_pty = pty.Partial.init(allocator, 2);
-    defer partial_pty.deinit();
-
-    var session_state = try session.Session.init(.{
-        .allocator = allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 16,
-        .pty = partial_pty.pty(),
-    });
-    defer session_state.deinit();
-    try session_state.start();
-
-    const pumped = try session_state.publishHostInputAndPump("hello");
-    try std.testing.expect(pumped.had_pending);
-    try std.testing.expectEqual(@as(u32, 2), pumped.drained);
-    try std.testing.expect(pumped.has_pending);
-    try std.testing.expect(!pumped.wait_readable);
-    try std.testing.expectEqualStrings("he", partial_pty.tx.items);
-    try std.testing.expectEqualStrings("llo", session_state.pending.items);
-}
-
 test "session pumps bounded transport reads into caller sink" {
     const allocator = std.testing.allocator;
 
@@ -260,31 +235,6 @@ test "session owns transport pump modes" {
     try std.testing.expectEqual(session.transport_chunk_bytes, constrained_limits.chunk_bytes);
 }
 
-test "session restore normalizes active snapshots to stopped" {
-    const allocator = std.testing.allocator;
-
-    var session_state = try session.Session.init(.{
-        .allocator = allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 8,
-    });
-    defer session_state.deinit();
-
-    try session_state.restore(.{
-        .cols = 132,
-        .rows = 40,
-        .status = .active,
-        .resize_count = 7,
-    });
-
-    const snap = session_state.snapshot();
-    try std.testing.expectEqual(@as(u16, 132), snap.cols);
-    try std.testing.expectEqual(@as(u16, 40), snap.rows);
-    try std.testing.expectEqual(session.Status.stopped, snap.status);
-    try std.testing.expectEqual(@as(u32, 7), snap.resize_count);
-}
-
 test "session publishes typed control signals through the pty boundary" {
     const allocator = std.testing.allocator;
 
@@ -299,34 +249,9 @@ test "session publishes typed control signals through the pty boundary" {
     });
     defer session_state.deinit();
 
-    try session_state.attachPty(mem_pty.pty());
+    session_state.pty = mem_pty.pty();
     try session_state.publishControlSignal(.interrupt);
-    try std.testing.expectEqual(session.ControlSignal.interrupt, mem_pty.last_signal.?);
-}
-
-test "session transport attachment is owned by session lifecycle" {
-    const allocator = std.testing.allocator;
-
-    var first = pty.Mem.init(allocator);
-    defer first.deinit();
-    var second = pty.Mem.init(allocator);
-    defer second.deinit();
-
-    var session_state = try session.Session.init(.{
-        .allocator = allocator,
-        .cols = 80,
-        .rows = 24,
-        .pending_capacity = 8,
-        .pty = first.pty(),
-    });
-    defer session_state.deinit();
-
-    try session_state.attachPty(second.pty());
-    try session_state.start();
-    try std.testing.expectError(error.SessionActive, session_state.detachPty());
-    session_state.stop();
-    try session_state.detachPty();
-    try std.testing.expectError(error.TransportUnavailable, session_state.publishControlSignal(.terminate));
+    try std.testing.expectEqual(platform.ControlSignal.interrupt, mem_pty.last_signal.?);
 }
 
 test "session stops transport on fatal write failure" {
@@ -353,12 +278,13 @@ test "session stops transport on fatal write failure" {
 }
 
 test "session constructs and owns build selected pty transport" {
-    var session_state = try session.Session.initPty(.{
+    const transport = try @import("../pty/selected_transport.zig").OwnedTransport.init(std.testing.allocator, .{ .shell_path = "/bin/sh" });
+    var session_state = try session.Session.initOwnedTransport(.{
         .allocator = std.testing.allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 8,
-        .launch = .{ .shell_path = "/bin/sh" },
+        .transport = transport,
     });
     defer session_state.deinit();
 

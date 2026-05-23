@@ -2,12 +2,11 @@ const std = @import("std");
 const platform = @import("pty/pty_platform.zig");
 const selected_transport = @import("pty/selected_transport.zig");
 
-/// Canonical session owner surface.
-pub const Pty = platform.Pty;
-pub const ControlSignal = platform.ControlSignal;
+/// Session owner internals depend on the abstract transport contract only.
+const Pty = platform.Pty;
+const ControlSignal = platform.ControlSignal;
 
 const OwnedTransport = selected_transport.OwnedTransport;
-const LaunchConfig = selected_transport.LaunchConfig;
 
 pub const TransportReadLimit = u32;
 pub const TransportByteLimit = u32;
@@ -30,14 +29,6 @@ pub const OwnedTransportConfig = struct {
     transport: OwnedTransport,
 };
 
-/// Session config for a build-selected PTY launch.
-pub const PtyConfig = struct {
-    allocator: std.mem.Allocator,
-    cols: u16,
-    rows: u16,
-    pending_capacity: TransportByteLimit,
-    launch: LaunchConfig = .{},
-};
 /// Session lifecycle status.
 pub const Status = enum(u8) {
     idle,
@@ -165,19 +156,6 @@ pub const Session = struct {
         return session;
     }
 
-    /// Initialize a session that owns a build-selected PTY transport.
-    /// This is repo-local owner API, not part of the shipped C ABI contract.
-    pub fn initPty(config: PtyConfig) !Session {
-        const transport = try selected_transport.OwnedTransport.init(config.allocator, config.launch);
-        return try Session.initOwnedTransport(.{
-            .allocator = config.allocator,
-            .cols = config.cols,
-            .rows = config.rows,
-            .pending_capacity = config.pending_capacity,
-            .transport = transport,
-        });
-    }
-
     /// Release queue and owned transport memory.
     pub fn deinit(self: *Session) void {
         if (self.status == .active) self.stop();
@@ -203,22 +181,6 @@ pub const Session = struct {
         }
         self.status = .active;
         self.ops.start_successes += 1;
-    }
-
-    /// Attach or replace the session transport while inactive.
-    pub fn attachPty(self: *Session, pty: Pty) error{SessionActive}!void {
-        if (self.status == .active) return error.SessionActive;
-        if (self.owned_transport) |*transport| transport.deinit();
-        self.owned_transport = null;
-        self.pty = pty;
-    }
-
-    /// Detach the current transport while inactive.
-    pub fn detachPty(self: *Session) error{SessionActive}!void {
-        if (self.status == .active) return error.SessionActive;
-        if (self.owned_transport) |*transport| transport.deinit();
-        self.owned_transport = null;
-        self.pty = null;
     }
 
     /// Stop the transport and mark session stopped.
@@ -282,14 +244,6 @@ pub const Session = struct {
             .has_pending = has_pending,
             .wait_readable = !woke and !had_pending and !has_pending,
         };
-    }
-
-    /// Queue host input, immediately pump it toward the transport, and report backlog.
-    pub fn publishHostInputAndPump(self: *Session, bytes: []const u8) error{ OutOfMemory, QueueFull }!OutboundInputPump {
-        try self.publishHostInput(bytes);
-        const outbound = self.pumpOutboundInput(true);
-        if (outbound.has_pending) self.kickTransportWait();
-        return outbound;
     }
 
     /// Report whether host input still waits for transport write capacity.
@@ -491,14 +445,4 @@ pub const Session = struct {
         };
     }
 
-    /// Restore session from validated snapshot.
-    /// An `active` snapshot is intentionally normalized to `stopped`.
-    pub fn restore(self: *Session, snap: Snapshot) error{InvalidSnapshot}!void {
-        if (snap.cols == 0 or snap.rows == 0) return error.InvalidSnapshot;
-        self.cols = snap.cols;
-        self.rows = snap.rows;
-        self.status = if (snap.status == .active) .stopped else snap.status;
-        self.resize_count = snap.resize_count;
-        self.pending.clearRetainingCapacity();
-    }
 };

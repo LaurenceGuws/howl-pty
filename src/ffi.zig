@@ -1,4 +1,5 @@
 const std = @import("std");
+const platform = @import("pty/pty_platform.zig");
 const session = @import("session.zig");
 const selected_transport = @import("pty/selected_transport.zig");
 const test_pty = @import("pty/pty_test.zig");
@@ -145,12 +146,16 @@ pub fn sessionInit(
     // Range-check it once, then keep Session ownership typed as TransportByteLimit.
     if (pending_capacity > std.math.maxInt(session.TransportByteLimit)) return null;
     const owned = std.heap.c_allocator.create(session.Session) catch return null;
-    owned.* = session.Session.initPty(.{
+    const transport = selected_transport.OwnedTransport.init(std.heap.c_allocator, launch) catch {
+        std.heap.c_allocator.destroy(owned);
+        return null;
+    };
+    owned.* = session.Session.initOwnedTransport(.{
         .allocator = std.heap.c_allocator,
         .cols = cols,
         .rows = rows,
         .pending_capacity = @intCast(pending_capacity),
-        .launch = launch,
+        .transport = transport,
     }) catch {
         std.heap.c_allocator.destroy(owned);
         return null;
@@ -188,7 +193,7 @@ pub fn sessionResize(handle: SessionHandle, cols: u16, rows: u16) callconv(.c) i
 
 pub fn sessionPublishSignal(handle: SessionHandle, signal: u8) callconv(.c) i32 {
     const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
-    const typed = session.ControlSignal.fromRaw(signal) catch return @intFromEnum(HowlPtyCallStatus.invalid_argument);
+    const typed = platform.ControlSignal.fromRaw(signal) catch return @intFromEnum(HowlPtyCallStatus.invalid_argument);
     owned.publishControlSignal(typed) catch return @intFromEnum(HowlPtyCallStatus.failed);
     return @intFromEnum(HowlPtyCallStatus.ok);
 }
@@ -276,9 +281,9 @@ test "session ffi publishes typed control signals through the shipped abi" {
     const handle: SessionHandle = @ptrCast(&state);
     try std.testing.expectEqual(
         @as(i32, 0),
-        sessionPublishSignal(handle, @intFromEnum(session.ControlSignal.interrupt)),
+        sessionPublishSignal(handle, @intFromEnum(platform.ControlSignal.interrupt)),
     );
-    try std.testing.expectEqual(session.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try std.testing.expectEqual(platform.ControlSignal.interrupt, mem_pty.last_signal.?);
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(HowlPtyCallStatus.invalid_argument)),
         sessionPublishSignal(handle, 0),

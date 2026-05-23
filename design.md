@@ -112,8 +112,9 @@ sequenceDiagram
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
 
 ## Internal Owner API
-- `Session.initPty` is repo-local owner API for build-selected transport construction.
+- Build-selected transport construction is repo-local wiring through `selected_transport.OwnedTransport.init(...)` plus `Session.initOwnedTransport(...)`.
 - `session.transport_chunk_bytes` and `Session.transportPumpLimits(mode)` are the repo-local owner API for the bounded transport read chunk and per-mode burst limits.
+- Session does not preserve extra attach/detach, snapshot-restore, or input-and-pump helper posture as package API shape.
 - The repo-local `Pty.start(cols, rows)` contract consumes Session-owned startup geometry directly.
   Concrete PTY owners must not invent a transport-local default grid before child steady state.
 - It is not part of the shipped C ABI contract.
