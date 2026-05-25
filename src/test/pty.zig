@@ -1,5 +1,5 @@
 const std = @import("std");
-const platform = @import("../pty/pty_platform.zig");
+const pty_api = @import("../pty.zig");
 const pty = @import("../pty/pty_test.zig");
 
 test "pty control signals stay typed across the interface" {
@@ -12,7 +12,7 @@ test "pty control signals stay typed across the interface" {
     defer mem_pty.pty().stop();
 
     mem_pty.pty().control(.terminate);
-    try std.testing.expectEqual(platform.ControlSignal.terminate, mem_pty.last_signal.?);
+    try std.testing.expectEqual(pty_api.ControlSignal.terminate, mem_pty.last_signal.?);
 }
 
 test "pty doubles share resize and write semantics through the interface" {

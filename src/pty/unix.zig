@@ -1,17 +1,16 @@
-const std = @import("std");
 const builtin = @import("builtin");
-const posix_owner = @import("pty_posix_owner.zig");
-const common = @import("pty_platform.zig");
-const c = common.c;
+const posix = @import("posix.zig");
+const pty = @import("../pty.zig");
+const c = posix.c;
 
-pub const UnixPty = posix_owner.PosixPty(struct {
-    pub fn ensureSupported() common.Pty.StartError!void {
+pub const Pty = posix.make(struct {
+    pub fn ensureSupported() pty.Pty.StartError!void {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos) {
             return error.UnsupportedPlatform;
         }
     }
 
-    pub fn openTransport(cols: u16, rows: u16) common.Pty.StartError!posix_owner.TransportOpen {
+    pub fn openTransport(cols: u16, rows: u16) pty.Pty.StartError!posix.Open {
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
         var winsize = c.struct_winsize{

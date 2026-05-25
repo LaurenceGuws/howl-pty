@@ -1,6 +1,6 @@
 const std = @import("std");
 const session = @import("../session.zig");
-const platform = @import("../pty/pty_platform.zig");
+const pty_api = @import("../pty.zig");
 const pty = @import("../pty/pty_test.zig");
 
 fn expectPendingBytes(state: *const session.Session, expected: []const u8) !void {
@@ -32,9 +32,8 @@ test "session owner and internal pty plumbing interoperate" {
     defer state.deinit();
 
     try std.testing.expectEqual(session.Status.idle, state.snapshot().status);
-    try std.testing.expectEqual(platform.PtyClass, @TypeOf(@as(platform.PtyClass, .posix_pty)));
-    try std.testing.expectEqual(@as(u8, 15), platform.ControlSignal.terminate.raw());
-    try std.testing.expectEqual(@as(u8, 3), platform.ControlSignal.resize_notify.raw());
+    try std.testing.expectEqual(@as(u8, 15), pty_api.ControlSignal.terminate.raw());
+    try std.testing.expectEqual(@as(u8, 3), pty_api.ControlSignal.resize_notify.raw());
 }
 
 test "session flushes outbound input deterministically" {
@@ -290,12 +289,12 @@ test "session publishes typed control signals through the pty boundary" {
         .cols = 80,
         .rows = 24,
         .pending_capacity = 8,
+        .pty = mem_pty.pty(),
     });
     defer session_state.deinit();
 
-    session_state.pty = mem_pty.pty();
     try session_state.publishControlSignal(.interrupt);
-    try std.testing.expectEqual(platform.ControlSignal.interrupt, mem_pty.last_signal.?);
+    try std.testing.expectEqual(pty_api.ControlSignal.interrupt, mem_pty.last_signal.?);
 }
 
 test "session stops transport on fatal write failure" {
@@ -322,13 +321,12 @@ test "session stops transport on fatal write failure" {
 }
 
 test "session constructs and owns build selected pty transport" {
-    const transport = try @import("../pty/selected_transport.zig").OwnedTransport.init(std.testing.allocator, .{ .shell_path = "/bin/sh" });
-    var session_state = try session.Session.initOwnedTransport(.{
+    var session_state = try session.Session.init(.{
         .allocator = std.testing.allocator,
         .cols = 80,
         .rows = 24,
         .pending_capacity = 8,
-        .transport = transport,
+        .launch = .{ .shell_path = "/bin/sh" },
     });
     defer session_state.deinit();
 

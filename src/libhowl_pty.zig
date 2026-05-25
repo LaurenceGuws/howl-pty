@@ -17,3 +17,8 @@ comptime {
     @export(&ffi.sessionRead, .{ .name = "howl_pty_session_read" });
     @export(&ffi.transportPumpLimits, .{ .name = "howl_pty_transport_pump_limits" });
 }
+
+test {
+    _ = @import("test/session.zig");
+    _ = @import("test/pty.zig");
+}

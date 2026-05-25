@@ -5,18 +5,18 @@ Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../reference-index.md`](../refer
 ## Purpose
 `howl-pty` owns PTY-backed child transport orchestration.
 
-It does not model terminal semantics. It owns queueing, transport start and stop, transport reads and writes, resize propagation, and transport selection.
+It does not model terminal semantics. It owns queueing, transport start and stop, transport reads and writes, resize propagation, and PTY launch wiring.
 
 ## Public Surface
 - The only shipped embedding contract is `include/howl_pty.h` plus `howl_pty_*` exported symbols.
 - The only public root that may export that contract is `src/libhowl_pty.zig`.
 - Opaque session handles plus typed status, snapshot, pump, read, and transport-limit structs are the public ABI.
-- `src/howl_pty.zig` is not an embedding surface. If it survives, it is repo-local only.
+- There is no separate repo-local Zig facade root for tests or host integration.
 - Internal workspace wiring is not a public contract and is not a preservation target.
 - Accepted cleanup results now locked:
-  - `src/session_namespace.zig` is deleted
-  - the Zig-shaped host facade posture in `src/pty.zig` is removed
-  - the Zig-shaped aggregation posture in `src/howl_pty.zig` is removed
+  - `src/howl_pty.zig` is deleted
+  - `src/pty/selected_transport.zig` is deleted
+  - Android support is deleted
 
 ```mermaid
 classDiagram
@@ -32,22 +32,15 @@ classDiagram
       +resize()
       +snapshot()
     }
-    class OwnedPty {
-      +init()
-      +deinit()
-      +pty()
-      +class()
-    }
     class Pty
 
     HowlPtyAbi --> Session
     Session --> Pty
-    OwnedPty --> Pty
 ```
 
 ## Ownership Rules
 - `Session` owns pending outbound input, current size, lifecycle state, and transport-facing counters.
-- `OwnedPty` owns the concrete selected PTY implementation and cleanup.
+- `Session` owns either one external PTY handle or one concrete owned PTY backend.
 - `Session` talks to the abstract `Pty` interface only.
 - Test PTY variants are for repo-local conformance testing only.
 - Concrete platform PTY implementations stay internal to `howl-pty`; host transport ownership stays behind `Session` and the C ABI.
@@ -112,7 +105,7 @@ sequenceDiagram
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
 
 ## Internal Owner API
-- Build-selected transport construction is repo-local wiring through `selected_transport.OwnedTransport.init(...)` plus `Session.initOwnedTransport(...)`.
+- Build-selected transport construction is repo-local wiring through `Session.init(.{ .launch = ... })`.
 - `session.transport_chunk_bytes` and `Session.transportPumpLimits(mode)` are the repo-local owner API for the bounded transport read chunk and per-mode burst limits.
 - Session does not preserve extra attach/detach, snapshot-restore, or input-and-pump helper posture as package API shape.
 - The repo-local `Pty.start(cols, rows)` contract consumes Session-owned startup geometry directly.
@@ -127,7 +120,6 @@ sequenceDiagram
 ## Change Rules
 - Keep the embedding boundary C ABI first in docs, roots, and build wiring.
 - Delete wrapper namespace roots instead of preserving parallel Zig public stories.
-- Concrete PTY implementations must stay behind `OwnedPty` and `Pty`.
+- Concrete PTY implementations must stay behind `Session` and `Pty`.
 - Queue policy belongs in `Session`, not in hosts.
 - `Pty.kickWait()` must be able to break `Pty.waitReadable()` on shipped backends so the owner thread can reschedule bounded work without a fake wake path.
-- New transport variants should preserve the same owner/interface split.

@@ -1,22 +1,38 @@
 const std = @import("std");
 const posix = std.posix;
-const platform = @import("pty_platform.zig");
+const pty = @import("../pty.zig");
 
-const Pty = platform.Pty;
-const ControlSignal = platform.ControlSignal;
-const c = platform.c;
+pub const c = @cImport({
+    @cDefine("_Nonnull", "");
+    @cDefine("_Nullable", "");
+    @cDefine("_Null_unspecified", "");
+    @cDefine("BIONIC_IOCTL_NO_SIGNEDNESS_OVERLOAD", "1");
+    @cInclude("unistd.h");
+    @cInclude("fcntl.h");
+    @cInclude("stdlib.h");
+    if (@import("builtin").os.tag == .macos) {
+        @cInclude("util.h");
+    } else {
+        @cInclude("pty.h");
+    }
+    @cInclude("signal.h");
+    @cInclude("sys/wait.h");
+});
 
-pub const TransportOpen = struct {
+const Pty = pty.Pty;
+const ControlSignal = pty.ControlSignal;
+
+pub const Open = struct {
     master_fd: posix.fd_t,
     slave_fd: posix.fd_t,
 };
 
-const WakePipe = struct {
+pub const Wake = struct {
     read_fd: posix.fd_t,
     write_fd: posix.fd_t,
 };
 
-pub fn PosixPty(comptime Backend: type) type {
+pub fn make(comptime Backend: type) type {
     return struct {
         allocator: std.mem.Allocator,
         shell_path: [:0]u8,
@@ -85,20 +101,20 @@ pub fn PosixPty(comptime Backend: type) type {
             std.debug.assert(cols > 0);
             std.debug.assert(rows > 0);
 
-            try platform.requireExecutable(self.shell_path);
+            try requireExecutable(self.shell_path);
             const transport = try Backend.openTransport(cols, rows);
             errdefer closeTransport(transport);
 
             const wake = try openWakePipe();
             errdefer closeWakePipe(wake);
 
-            try platform.setCloseOnExec(transport.master_fd);
-            try platform.setNonBlocking(transport.master_fd);
+            try setCloseOnExec(transport.master_fd);
+            try setNonBlocking(transport.master_fd);
 
             const pid = c.fork();
             if (pid < 0) return error.OpenPtyFailed;
             if (pid == 0) {
-                platform.childProcess(
+                childProcess(
                     transport.master_fd,
                     transport.slave_fd,
                     wake.read_fd,
@@ -131,10 +147,10 @@ pub fn PosixPty(comptime Backend: type) type {
 
             self.kickWait();
             if (self.child_pid) |pid| {
-                platform.sendGroupSignal(pid, .hangup);
-                platform.sendGroupSignal(pid, .terminate);
-                platform.sendGroupSignal(pid, .kill);
-                platform.reapChildNow(pid);
+                sendGroupSignal(pid, .hangup);
+                sendGroupSignal(pid, .terminate);
+                sendGroupSignal(pid, .kill);
+                reapChild(pid);
             }
 
             if (self.master_fd) |fd| _ = c.close(@intCast(fd));
@@ -297,7 +313,7 @@ pub fn PosixPty(comptime Backend: type) type {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return;
-            if (self.child_pid) |pid| platform.sendSignal(pid, signal);
+            if (self.child_pid) |pid| sendSignal(pid, signal);
         }
     };
 }
@@ -309,12 +325,12 @@ fn optionalZPtr(bytes: ?[:0]u8) ?[*:0]u8 {
     return null;
 }
 
-fn closeTransport(transport: TransportOpen) void {
+fn closeTransport(transport: Open) void {
     _ = c.close(@intCast(transport.master_fd));
     _ = c.close(@intCast(transport.slave_fd));
 }
 
-fn openWakePipe() Pty.StartError!WakePipe {
+pub fn openWake() Pty.StartError!Wake {
     var fds = [_]c_int{ -1, -1 };
     if (c.pipe(&fds) != 0) return error.OpenPtyFailed;
     errdefer {
@@ -322,14 +338,138 @@ fn openWakePipe() Pty.StartError!WakePipe {
         if (fds[1] >= 0) _ = c.close(fds[1]);
     }
 
-    try platform.setCloseOnExec(@intCast(fds[0]));
-    try platform.setCloseOnExec(@intCast(fds[1]));
-    try platform.setNonBlocking(@intCast(fds[0]));
-    try platform.setNonBlocking(@intCast(fds[1]));
+    try setCloseOnExec(@intCast(fds[0]));
+    try setCloseOnExec(@intCast(fds[1]));
+    try setNonBlocking(@intCast(fds[0]));
+    try setNonBlocking(@intCast(fds[1]));
     return .{ .read_fd = @intCast(fds[0]), .write_fd = @intCast(fds[1]) };
 }
 
-fn closeWakePipe(wake: WakePipe) void {
+pub fn closeWake(wake: Wake) void {
     _ = c.close(@intCast(wake.read_fd));
     _ = c.close(@intCast(wake.write_fd));
+}
+
+fn openWakePipe() Pty.StartError!Wake {
+    return openWake();
+}
+
+fn closeWakePipe(wake: Wake) void {
+    closeWake(wake);
+}
+
+pub fn setNonBlocking(fd: posix.fd_t) Pty.StartError!void {
+    const flags = c.fcntl(fd, c.F_GETFL, @as(c_int, 0));
+    if (flags < 0) return error.OpenPtyFailed;
+    if (c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) return error.OpenPtyFailed;
+}
+
+pub fn setCloseOnExec(fd: posix.fd_t) Pty.StartError!void {
+    const flags = c.fcntl(fd, c.F_GETFD, @as(c_int, 0));
+    if (flags < 0) return error.OpenPtyFailed;
+    if (c.fcntl(fd, c.F_SETFD, flags | c.FD_CLOEXEC) != 0) return error.OpenPtyFailed;
+}
+
+pub fn requireExecutable(path: [:0]const u8) Pty.StartError!void {
+    if (c.access(path.ptr, c.X_OK) != 0) return error.ShellUnavailable;
+}
+
+fn cArg(path: [*:0]const u8) [*c]u8 {
+    return @ptrFromInt(@intFromPtr(path));
+}
+
+pub const ChildProcessSetupFn = *const fn (shell_path: [:0]const u8) void;
+
+const ChildProcessFds = struct {
+    master_fd: posix.fd_t,
+    slave_fd: posix.fd_t,
+    wake_read_fd: ?posix.fd_t,
+    wake_write_fd: ?posix.fd_t,
+};
+
+fn resetChildSignalDispositions() Pty.StartError!void {
+    var sa: posix.Sigaction = .{
+        .handler = .{ .handler = posix.SIG.DFL },
+        .mask = posix.sigemptyset(),
+        .flags = 0,
+    };
+    if (c.sigaction(@intFromEnum(posix.SIG.ABRT), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.ALRM), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.BUS), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.CHLD), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.FPE), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.HUP), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.ILL), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.INT), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.PIPE), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.QUIT), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.SEGV), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.TERM), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+    if (c.sigaction(@intFromEnum(posix.SIG.TRAP), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
+}
+
+fn closeChildFdIfNeeded(fd: posix.fd_t) Pty.StartError!void {
+    if (fd <= 2) return;
+    if (c.close(@intCast(fd)) != 0) return error.OpenPtyFailed;
+}
+
+fn setupChildProcessFds(fds: ChildProcessFds) Pty.StartError!void {
+    try resetChildSignalDispositions();
+    if (c.setsid() < 0) return error.OpenPtyFailed;
+    if (c.ioctl(@intCast(fds.slave_fd), c.TIOCSCTTY, @as(c_ulong, 0)) != 0) return error.OpenPtyFailed;
+    if (c.dup2(fds.slave_fd, 0) < 0) return error.OpenPtyFailed;
+    if (c.dup2(fds.slave_fd, 1) < 0) return error.OpenPtyFailed;
+    if (c.dup2(fds.slave_fd, 2) < 0) return error.OpenPtyFailed;
+    try closeChildFdIfNeeded(fds.master_fd);
+    if (fds.wake_read_fd) |fd| try closeChildFdIfNeeded(fd);
+    if (fds.wake_write_fd) |fd| try closeChildFdIfNeeded(fd);
+    try closeChildFdIfNeeded(fds.slave_fd);
+}
+
+pub fn childProcess(
+    master_fd: posix.fd_t,
+    slave_fd: posix.fd_t,
+    wake_read_fd: ?posix.fd_t,
+    wake_write_fd: ?posix.fd_t,
+    shell_path: [:0]const u8,
+    command: ?[*:0]const u8,
+    cwd: ?[*:0]const u8,
+    setup: ?ChildProcessSetupFn,
+) Pty.StartError!void {
+    try setupChildProcessFds(.{
+        .master_fd = master_fd,
+        .slave_fd = slave_fd,
+        .wake_read_fd = wake_read_fd,
+        .wake_write_fd = wake_write_fd,
+    });
+
+    if (cwd) |dir| {
+        if (c.chdir(dir) != 0) c._exit(127);
+    }
+    if (setup) |hook| hook(shell_path);
+
+    if (command) |cmd| {
+        const argv = [_:null][*c]u8{ cArg(shell_path.ptr), cArg("-c"), cArg(cmd) };
+        const envp: [*c]const [*c]u8 = @ptrCast(@constCast(std.c.environ));
+        _ = c.execve(shell_path.ptr, argv[0..].ptr, envp);
+        c._exit(127);
+    }
+
+    const argv = [_:null][*c]u8{ cArg(shell_path.ptr), cArg("-i") };
+    const envp: [*c]const [*c]u8 = @ptrCast(@constCast(std.c.environ));
+    _ = c.execve(shell_path.ptr, argv[0..].ptr, envp);
+    c._exit(127);
+}
+
+pub fn sendSignal(pid: posix.pid_t, signal: ControlSignal) void {
+    posix.kill(pid, signal.posixSignal()) catch {};
+}
+
+pub fn sendGroupSignal(pid: posix.pid_t, signal: ControlSignal) void {
+    posix.kill(-pid, signal.posixSignal()) catch {};
+}
+
+pub fn reapChild(pid: posix.pid_t) void {
+    var status: c_int = 0;
+    _ = c.waitpid(pid, &status, c.WNOHANG);
 }
