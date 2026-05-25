@@ -2,6 +2,7 @@ const std = @import("std");
 const pty = @import("../pty.zig");
 const Pty = pty.Pty;
 const ControlSignal = pty.ControlSignal;
+const WaitReadableResult = pty.Pty.WaitReadableResult;
 
 pub const Mem = struct {
     allocator: std.mem.Allocator,
@@ -54,11 +55,11 @@ pub const Mem = struct {
         self.rx.shrinkRetainingCapacity(remaining);
         return n;
     }
-    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!WaitReadableResult {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (!self.started) return error.NotStarted;
         _ = timeout_ms;
-        return self.rx.items.len > 0;
+        return if (self.rx.items.len > 0) .ready else .timeout;
     }
     fn kickWaitPty(ptr: *anyopaque) void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
@@ -118,10 +119,10 @@ pub const Partial = struct {
         _ = buf;
         return 0;
     }
-    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!WaitReadableResult {
         _ = ptr;
         _ = timeout_ms;
-        return false;
+        return .timeout;
     }
     fn kickWaitPty(ptr: *anyopaque) void {
         _ = ptr;
@@ -168,7 +169,7 @@ pub const Fail = struct {
         _ = buf;
         return error.ReadFailed;
     }
-    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
+    fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!WaitReadableResult {
         _ = ptr;
         _ = timeout_ms;
         return error.WaitFailed;

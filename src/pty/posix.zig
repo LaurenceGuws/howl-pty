@@ -21,6 +21,7 @@ pub const c = @cImport({
 
 const Pty = pty.Pty;
 const ControlSignal = pty.ControlSignal;
+const WaitReadableResult = pty.Pty.WaitReadableResult;
 
 pub const Open = struct {
     master_fd: posix.fd_t,
@@ -31,6 +32,20 @@ pub const Wake = struct {
     read_fd: posix.fd_t,
     write_fd: posix.fd_t,
 };
+
+const ChildReady = struct {
+    read_fd: posix.fd_t,
+    write_fd: posix.fd_t,
+};
+
+const SignalResult = enum {
+    delivered,
+    missing,
+};
+
+const stop_hangup_grace_ns = 50 * std.time.ns_per_ms;
+const stop_terminate_grace_ns = 50 * std.time.ns_per_ms;
+const stop_wait_slice_ns = std.time.ns_per_ms;
 
 pub fn make(comptime Backend: type) type {
     return struct {
@@ -44,11 +59,16 @@ pub fn make(comptime Backend: type) type {
         master_fd: ?posix.fd_t,
         wake_read_fd: ?posix.fd_t,
         wake_write_fd: ?posix.fd_t,
-        child_pid: ?posix.pid_t,
+        child: Child,
         last_cols: u16,
         last_rows: u16,
 
         const Self = @This();
+        const Child = union(enum) {
+            none,
+            pending_session: posix.pid_t,
+            live: posix.pid_t,
+        };
 
         pub fn init(
             allocator: std.mem.Allocator,
@@ -78,7 +98,7 @@ pub fn make(comptime Backend: type) type {
                 .master_fd = null,
                 .wake_read_fd = null,
                 .wake_write_fd = null,
-                .child_pid = null,
+                .child = .none,
                 .last_cols = 0,
                 .last_rows = 0,
             };
@@ -108,17 +128,22 @@ pub fn make(comptime Backend: type) type {
             const wake = try openWakePipe();
             errdefer closeWakePipe(wake);
 
+            const child_ready = try openChildReadyPipe();
+            errdefer closeChildReadyPipe(child_ready);
+
             try setCloseOnExec(transport.master_fd);
             try setNonBlocking(transport.master_fd);
 
             const pid = c.fork();
             if (pid < 0) return error.OpenPtyFailed;
             if (pid == 0) {
+                _ = c.close(@intCast(child_ready.read_fd));
                 childProcess(
                     transport.master_fd,
                     transport.slave_fd,
                     wake.read_fd,
                     wake.write_fd,
+                    child_ready.write_fd,
                     self.shell_path,
                     self.command_ptr,
                     self.start_path_ptr,
@@ -128,35 +153,34 @@ pub fn make(comptime Backend: type) type {
             }
 
             _ = c.close(@intCast(transport.slave_fd));
+            _ = c.close(@intCast(child_ready.write_fd));
             self.master_fd = transport.master_fd;
             self.wake_read_fd = wake.read_fd;
             self.wake_write_fd = wake.write_fd;
-            self.child_pid = pid;
+            self.child = .{ .pending_session = pid };
             self.last_cols = cols;
             self.last_rows = rows;
             self.started = true;
+            errdefer self.stopTransport();
+            try self.awaitChildSession(child_ready.read_fd);
+            self.child = .{ .live = pid };
 
             std.debug.assert(self.master_fd != null);
             std.debug.assert(self.wake_read_fd != null);
             std.debug.assert(self.wake_write_fd != null);
-            std.debug.assert(self.child_pid != null);
+            std.debug.assert(self.childPid() != null);
         }
 
         fn stopTransport(self: *Self) void {
             if (!self.started) return;
 
             self.kickWait();
-            if (self.child_pid) |pid| {
-                sendGroupSignal(pid, .hangup);
-                sendGroupSignal(pid, .terminate);
-                sendGroupSignal(pid, .kill);
-                reapChild(pid);
-            }
+            self.stopChild();
 
             if (self.master_fd) |fd| _ = c.close(@intCast(fd));
             if (self.wake_read_fd) |fd| _ = c.close(@intCast(fd));
             if (self.wake_write_fd) |fd| _ = c.close(@intCast(fd));
-            self.child_pid = null;
+            self.child = .none;
             self.master_fd = null;
             self.wake_read_fd = null;
             self.wake_write_fd = null;
@@ -165,25 +189,87 @@ pub fn make(comptime Backend: type) type {
             std.debug.assert(self.master_fd == null);
             std.debug.assert(self.wake_read_fd == null);
             std.debug.assert(self.wake_write_fd == null);
-            std.debug.assert(self.child_pid == null);
+            std.debug.assert(self.childPid() == null);
         }
 
         fn refreshChildState(self: *Self) void {
             if (!self.started) return;
-            const pid = self.child_pid orelse return;
-
-            var status: c_int = 0;
-            const res = c.waitpid(pid, &status, c.WNOHANG);
-            if (res == pid) {
-                self.child_pid = null;
+            const pid = self.childPid() orelse return;
+            switch (waitChildNoHang(pid)) {
+                .alive => {},
+                .reaped => {
+                    self.child = .none;
+                },
             }
         }
 
         fn transportReady(self: *const Self) bool {
             if (!self.started) return false;
             if (self.master_fd == null) return false;
-            if (self.child_pid == null) return false;
+            if (self.child != .live) return false;
             return true;
+        }
+
+        fn childPid(self: *const Self) ?posix.pid_t {
+            return switch (self.child) {
+                .none => null,
+                .pending_session => |pid| pid,
+                .live => |pid| pid,
+            };
+        }
+
+        fn awaitChildSession(self: *Self, ready_fd: posix.fd_t) Pty.StartError!void {
+            defer _ = c.close(@intCast(ready_fd));
+            var byte: [1]u8 = undefined;
+            while (true) {
+                const n = c.read(ready_fd, &byte, byte.len);
+                if (n == 1) return;
+                if (n == 0) {
+                    self.refreshChildState();
+                    return error.OpenPtyFailed;
+                }
+                switch (posix.errno(n)) {
+                    .INTR => continue,
+                    else => return error.OpenPtyFailed,
+                }
+            }
+        }
+
+        fn stopChild(self: *Self) void {
+            switch (self.child) {
+                .none => {},
+                .pending_session => |pid| stopPendingChild(self, pid),
+                .live => |pid| stopLiveChild(self, pid),
+            }
+        }
+
+        fn stopPendingChild(self: *Self, pid: posix.pid_t) void {
+            std.debug.assert(pid > 0);
+            _ = sendSignal(pid, .terminate);
+            if (waitChildWithDeadline(pid, stop_terminate_grace_ns)) {
+                self.child = .none;
+                return;
+            }
+            _ = sendSignal(pid, .kill);
+            waitChildBlocking(pid);
+            self.child = .none;
+        }
+
+        fn stopLiveChild(self: *Self, pid: posix.pid_t) void {
+            std.debug.assert(pid > 0);
+            _ = sendGroupSignal(pid, .hangup);
+            if (waitChildWithDeadline(pid, stop_hangup_grace_ns)) {
+                self.child = .none;
+                return;
+            }
+            _ = sendGroupSignal(pid, .terminate);
+            if (waitChildWithDeadline(pid, stop_terminate_grace_ns)) {
+                self.child = .none;
+                return;
+            }
+            _ = sendGroupSignal(pid, .kill);
+            waitChildBlocking(pid);
+            self.child = .none;
         }
 
         fn kickWait(self: *Self) void {
@@ -261,7 +347,7 @@ pub fn make(comptime Backend: type) type {
             return @intCast(n);
         }
 
-        fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!bool {
+        fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!WaitReadableResult {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
@@ -273,17 +359,17 @@ pub fn make(comptime Backend: type) type {
             };
             const poll_timeout: i32 = if (timeout_ms < 0) -1 else timeout_ms;
             const ready = posix.poll(&fds, poll_timeout) catch return error.WaitFailed;
-            if (ready <= 0) return false;
+            if (ready <= 0) return .timeout;
 
             if ((fds[1].revents & (posix.POLL.IN | posix.POLL.HUP)) != 0) {
                 self.drainWakePipe();
-                return false;
+                return .wake;
             }
             if ((fds[0].revents & posix.POLL.HUP) != 0) {
                 self.refreshChildState();
                 if (!self.transportReady()) return error.NotStarted;
             }
-            return (fds[0].revents & posix.POLL.IN) != 0;
+            return waitReadablePollResult(fds[0].revents);
         }
 
         fn kickWaitPty(ptr: *anyopaque) void {
@@ -313,9 +399,14 @@ pub fn make(comptime Backend: type) type {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return;
-            if (self.child_pid) |pid| sendSignal(pid, signal);
+            if (self.childPid()) |pid| _ = sendSignal(pid, signal);
         }
     };
+}
+
+fn waitReadablePollResult(revents: i16) WaitReadableResult {
+    if ((revents & posix.POLL.IN) != 0) return .ready;
+    return .timeout;
 }
 
 fn optionalZPtr(bytes: ?[:0]u8) ?[*:0]u8 {
@@ -356,6 +447,24 @@ fn openWakePipe() Pty.StartError!Wake {
 
 fn closeWakePipe(wake: Wake) void {
     closeWake(wake);
+}
+
+fn openChildReadyPipe() Pty.StartError!ChildReady {
+    var fds = [_]c_int{ -1, -1 };
+    if (c.pipe(&fds) != 0) return error.OpenPtyFailed;
+    errdefer {
+        if (fds[0] >= 0) _ = c.close(fds[0]);
+        if (fds[1] >= 0) _ = c.close(fds[1]);
+    }
+
+    try setCloseOnExec(@intCast(fds[0]));
+    try setCloseOnExec(@intCast(fds[1]));
+    return .{ .read_fd = @intCast(fds[0]), .write_fd = @intCast(fds[1]) };
+}
+
+fn closeChildReadyPipe(pipe: ChildReady) void {
+    _ = c.close(@intCast(pipe.read_fd));
+    _ = c.close(@intCast(pipe.write_fd));
 }
 
 pub fn setNonBlocking(fd: posix.fd_t) Pty.StartError!void {
@@ -426,11 +535,26 @@ fn setupChildProcessFds(fds: ChildProcessFds) Pty.StartError!void {
     try closeChildFdIfNeeded(fds.slave_fd);
 }
 
+fn notifyParentChildSessionReady(ready_write_fd: ?posix.fd_t) Pty.StartError!void {
+    const fd = ready_write_fd orelse return;
+    defer closeChildFdIfNeeded(fd) catch unreachable;
+    var byte: [1]u8 = .{1};
+    while (true) {
+        const n = c.write(fd, &byte, byte.len);
+        if (n == 1) return;
+        switch (posix.errno(n)) {
+            .INTR => continue,
+            else => return error.OpenPtyFailed,
+        }
+    }
+}
+
 pub fn childProcess(
     master_fd: posix.fd_t,
     slave_fd: posix.fd_t,
     wake_read_fd: ?posix.fd_t,
     wake_write_fd: ?posix.fd_t,
+    ready_write_fd: ?posix.fd_t,
     shell_path: [:0]const u8,
     command: ?[*:0]const u8,
     cwd: ?[*:0]const u8,
@@ -442,6 +566,7 @@ pub fn childProcess(
         .wake_read_fd = wake_read_fd,
         .wake_write_fd = wake_write_fd,
     });
+    try notifyParentChildSessionReady(ready_write_fd);
 
     if (cwd) |dir| {
         if (c.chdir(dir) != 0) c._exit(127);
@@ -461,15 +586,100 @@ pub fn childProcess(
     c._exit(127);
 }
 
-pub fn sendSignal(pid: posix.pid_t, signal: ControlSignal) void {
-    posix.kill(pid, signal.posixSignal()) catch {};
-}
-
-pub fn sendGroupSignal(pid: posix.pid_t, signal: ControlSignal) void {
-    posix.kill(-pid, signal.posixSignal()) catch {};
-}
-
-pub fn reapChild(pid: posix.pid_t) void {
+fn waitChildNoHang(pid: posix.pid_t) enum { alive, reaped } {
+    std.debug.assert(pid > 0);
     var status: c_int = 0;
-    _ = c.waitpid(pid, &status, c.WNOHANG);
+    while (true) {
+        const res = c.waitpid(pid, &status, c.WNOHANG);
+        if (res == 0) return .alive;
+        if (res == pid) return .reaped;
+        switch (posix.errno(res)) {
+            .INTR => continue,
+            .CHILD => return .reaped,
+            else => return .reaped,
+        }
+    }
+}
+
+fn waitChildWithDeadline(pid: posix.pid_t, timeout_ns: u64) bool {
+    std.debug.assert(pid > 0);
+    const wait_slices = @max(1, timeout_ns / stop_wait_slice_ns);
+    var slice_index: u64 = 0;
+    while (slice_index < wait_slices) : (slice_index += 1) {
+        if (waitChildNoHang(pid) == .reaped) return true;
+        _ = c.usleep(@intCast(stop_wait_slice_ns / std.time.ns_per_us));
+    }
+    return waitChildNoHang(pid) == .reaped;
+}
+
+fn waitChildBlocking(pid: posix.pid_t) void {
+    std.debug.assert(pid > 0);
+    var status: c_int = 0;
+    while (true) {
+        const res = c.waitpid(pid, &status, 0);
+        if (res == pid) return;
+        switch (posix.errno(res)) {
+            .INTR => continue,
+            .CHILD => return,
+            else => return,
+        }
+    }
+}
+
+fn sendSignal(pid: posix.pid_t, signal: ControlSignal) SignalResult {
+    return sendSignalTarget(pid, signal);
+}
+
+fn sendGroupSignal(pid: posix.pid_t, signal: ControlSignal) SignalResult {
+    std.debug.assert(pid > 0);
+    return sendSignalTarget(-pid, signal);
+}
+
+fn sendSignalTarget(target: posix.pid_t, signal: ControlSignal) SignalResult {
+    while (true) {
+        const res = c.kill(target, @intCast(@intFromEnum(signal.posixSignal())));
+        if (res == 0) return .delivered;
+        switch (posix.errno(res)) {
+            .INTR => continue,
+            .SRCH => return .missing,
+            else => return .missing,
+        }
+    }
+}
+
+test "pending child stop uses direct child ownership until session is live" {
+    const pid = c.fork();
+    try std.testing.expect(pid >= 0);
+    if (pid == 0) {
+        _ = c.usleep(30 * std.time.us_per_s);
+        c._exit(0);
+    }
+
+    var owned = try make(struct {
+        pub fn ensureSupported() Pty.StartError!void {}
+
+        pub fn openTransport(cols: u16, rows: u16) Pty.StartError!Open {
+            _ = cols;
+            _ = rows;
+            return error.OpenPtyFailed;
+        }
+    }).init(std.testing.allocator, "/bin/sh", null, null);
+    defer {
+        owned.started = false;
+        owned.child = .none;
+        owned.deinit();
+    }
+
+    owned.started = true;
+    owned.child = .{ .pending_session = pid };
+    owned.stopTransport();
+
+    try std.testing.expect(owned.child == .none);
+}
+
+test "wait classification does not treat hup as readable" {
+    try std.testing.expectEqual(WaitReadableResult.timeout, waitReadablePollResult(posix.POLL.HUP));
+    try std.testing.expectEqual(WaitReadableResult.timeout, waitReadablePollResult(posix.POLL.ERR));
+    try std.testing.expectEqual(WaitReadableResult.ready, waitReadablePollResult(posix.POLL.IN));
+    try std.testing.expectEqual(WaitReadableResult.ready, waitReadablePollResult(posix.POLL.IN | posix.POLL.HUP));
 }

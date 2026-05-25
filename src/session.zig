@@ -8,6 +8,7 @@ const ControlSignal = pty_api.ControlSignal;
 pub const StartError = Pty.StartError;
 pub const ReadError = Pty.ReadError;
 pub const WaitReadableError = Pty.WaitReadableError;
+pub const WaitReadableResult = pty_api.WaitReadableResult;
 
 pub const TransportReadLimit = u32;
 pub const TransportByteLimit = u32;
@@ -28,11 +29,28 @@ pub const Status = enum(u8) {
     active,
     stopped,
 };
+
+pub const TerminalReason = enum(u8) {
+    explicit_stop = 1,
+    child_exit = 2,
+    transport_eof = 3,
+    transport_failure = 4,
+};
+
+pub const WaitOutcome = enum(u8) {
+    none = 0,
+    ready = 1,
+    timeout = 2,
+    wake = 3,
+    stopped = 4,
+};
 /// Serializable session snapshot.
 pub const Snapshot = struct {
     cols: u16,
     rows: u16,
     status: Status,
+    terminal_reason: ?TerminalReason,
+    last_wait_outcome: WaitOutcome,
     resize_count: u32,
 };
 
@@ -210,6 +228,8 @@ pub const Session = struct {
     pending: PendingQueue,
     pending_capacity: TransportByteLimit,
     transport: Transport,
+    terminal_reason: ?TerminalReason,
+    last_wait_outcome: WaitOutcome,
     resize_count: u32,
     ops: Ops,
 
@@ -230,6 +250,8 @@ pub const Session = struct {
             .pending = pending,
             .pending_capacity = config.pending_capacity,
             .transport = transport,
+            .terminal_reason = null,
+            .last_wait_outcome = .none,
             .resize_count = 0,
             .ops = std.mem.zeroes(Ops),
         };
@@ -246,7 +268,8 @@ pub const Session = struct {
     /// Start the transport if configured.
     pub fn start(self: *Session) StartError!void {
         self.ops.start_attempts += 1;
-        if (self.status == .active) return error.AlreadyStarted;
+        if (self.status != .idle) return error.AlreadyStarted;
+        std.debug.assert(self.terminal_reason == null);
         if (self.transport.pty()) |transport| {
             // Session owns the current grid size at the lifecycle transition into
             // active transport state. Starting the transport must consume that size
@@ -258,14 +281,14 @@ pub const Session = struct {
             };
         }
         self.status = .active;
+        self.last_wait_outcome = .none;
         self.ops.start_successes += 1;
     }
 
     /// Stop the transport and mark session stopped.
     pub fn stop(self: *Session) void {
         self.ops.stop_calls += 1;
-        stopTransport(self);
-        self.status = .stopped;
+        transitionToStopped(self, .explicit_stop);
     }
 
     /// Report whether session transport lifecycle is active.
@@ -335,8 +358,29 @@ pub const Session = struct {
 
     /// Wait for transport readability.
     pub fn waitReadable(self: *Session, timeout_ms: i32) bool {
-        const transport = self.transport.pty() orelse return false;
-        return transport.waitReadable(timeout_ms) catch |err| handleWaitError(self, err);
+        if (self.status != .active) {
+            self.last_wait_outcome = .stopped;
+            return false;
+        }
+        const transport = self.transport.pty() orelse {
+            self.last_wait_outcome = .timeout;
+            return false;
+        };
+        const outcome = transport.waitReadable(timeout_ms) catch |err| return handleWaitError(self, err);
+        return switch (outcome) {
+            .ready => blk: {
+                self.last_wait_outcome = .ready;
+                break :blk true;
+            },
+            .timeout => blk: {
+                self.last_wait_outcome = .timeout;
+                break :blk false;
+            },
+            .wake => blk: {
+                self.last_wait_outcome = .wake;
+                break :blk false;
+            },
+        };
     }
 
     /// Block for readability only when the preceding outbound pump was idle.
@@ -348,6 +392,7 @@ pub const Session = struct {
     /// Read transport bytes into caller buffer.
     pub fn readTransport(self: *Session, buf: []u8) TransportByteLimit {
         if (buf.len == 0) return 0;
+        if (self.status != .active) return 0;
         const transport = self.transport.pty() orelse return 0;
         const n = transport.read(buf) catch |err| return handleReadError(self, err);
         std.debug.assert(n <= buf.len);
@@ -397,6 +442,7 @@ pub const Session = struct {
         const pending_len = pendingInputBytes(self);
         std.debug.assert(pending_len <= self.pending_capacity);
         if (pending_len == 0) return 0;
+        if (self.status != .active) return 0;
         if (self.transport.pty()) |transport| return flushOutboundToTransport(self, transport, pending_len);
         return 0;
     }
@@ -420,9 +466,14 @@ pub const Session = struct {
     fn handleWriteError(self: *Session, err: Pty.WriteError) TransportByteLimit {
         return switch (err) {
             error.WouldBlock, error.Interrupted => 0,
+            error.NotStarted => {
+                self.ops.apply_transport_write_errors += 1;
+                transitionToStopped(self, .transport_failure);
+                return 0;
+            },
             else => {
                 self.ops.apply_transport_write_errors += 1;
-                transitionToStopped(self);
+                transitionToStopped(self, .transport_failure);
                 return 0;
             },
         };
@@ -431,8 +482,14 @@ pub const Session = struct {
     fn handleWaitError(self: *Session, err: WaitReadableError) bool {
         return switch (err) {
             error.WouldBlock, error.Interrupted => false,
+            error.NotStarted => {
+                transitionToStopped(self, .child_exit);
+                self.last_wait_outcome = .stopped;
+                return false;
+            },
             else => {
-                transitionToStopped(self);
+                transitionToStopped(self, .transport_failure);
+                self.last_wait_outcome = .stopped;
                 return false;
             },
         };
@@ -442,20 +499,30 @@ pub const Session = struct {
         return switch (err) {
             error.WouldBlock, error.Interrupted => 0,
             error.NotStarted => {
-                transitionToStopped(self);
+                transitionToStopped(self, .child_exit);
+                return 0;
+            },
+            error.EndOfStream => {
+                transitionToStopped(self, .transport_eof);
                 return 0;
             },
             else => {
-                transitionToStopped(self);
+                transitionToStopped(self, .transport_failure);
                 return 0;
             },
         };
     }
 
-    fn transitionToStopped(self: *Session) void {
-        if (self.status == .stopped) return;
+    fn transitionToStopped(self: *Session, reason: TerminalReason) void {
+        if (self.status == .stopped) {
+            std.debug.assert(self.terminal_reason != null);
+            return;
+        }
+        std.debug.assert(self.terminal_reason == null);
+        self.terminal_reason = reason;
         stopTransport(self);
         self.status = .stopped;
+        self.last_wait_outcome = .stopped;
     }
 
     fn stopTransport(self: *Session) void {
@@ -505,6 +572,8 @@ pub const Session = struct {
             .cols = self.cols,
             .rows = self.rows,
             .status = self.status,
+            .terminal_reason = self.terminal_reason,
+            .last_wait_outcome = self.last_wait_outcome,
             .resize_count = self.resize_count,
         };
     }

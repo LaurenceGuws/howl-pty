@@ -24,6 +24,22 @@ typedef enum {
 } HowlPtySessionStatus;
 
 typedef enum {
+  HOWL_PTY_TERMINAL_REASON_NONE = 0,
+  HOWL_PTY_TERMINAL_REASON_EXPLICIT_STOP = 1,
+  HOWL_PTY_TERMINAL_REASON_CHILD_EXIT = 2,
+  HOWL_PTY_TERMINAL_REASON_TRANSPORT_EOF = 3,
+  HOWL_PTY_TERMINAL_REASON_TRANSPORT_FAILURE = 4,
+} HowlPtyTerminalReason;
+
+typedef enum {
+  HOWL_PTY_WAIT_OUTCOME_NONE = 0,
+  HOWL_PTY_WAIT_OUTCOME_READY = 1,
+  HOWL_PTY_WAIT_OUTCOME_TIMEOUT = 2,
+  HOWL_PTY_WAIT_OUTCOME_WAKE = 3,
+  HOWL_PTY_WAIT_OUTCOME_STOPPED = 4,
+} HowlPtyWaitOutcome;
+
+typedef enum {
   HOWL_PTY_CONTROL_SIGNAL_HANGUP = 1,
   HOWL_PTY_CONTROL_SIGNAL_INTERRUPT = 2,
   HOWL_PTY_CONTROL_SIGNAL_RESIZE_NOTIFY = 3,
@@ -45,8 +61,9 @@ typedef struct {
   uint16_t cols;
   uint16_t rows;
   uint8_t session_status;
+  uint8_t terminal_reason;
+  uint8_t last_wait_outcome;
   uint8_t reserved0;
-  uint16_t reserved1;
   uint32_t resize_count;
 } HowlPtySnapshot;
 

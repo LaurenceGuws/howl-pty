@@ -40,6 +40,12 @@ pub const Pty = struct {
         WouldBlock,
     };
 
+    pub const WaitReadableResult = enum(u8) {
+        ready,
+        timeout,
+        wake,
+    };
+
     pub const ResizeError = error{
         NotStarted,
         ResizeFailed,
@@ -50,7 +56,7 @@ pub const Pty = struct {
         stop: *const fn (ptr: *anyopaque) void,
         write: *const fn (ptr: *anyopaque, bytes: []const u8) WriteError!usize,
         read: *const fn (ptr: *anyopaque, buf: []u8) ReadError!usize,
-        wait_readable: *const fn (ptr: *anyopaque, timeout_ms: i32) WaitReadableError!bool,
+        wait_readable: *const fn (ptr: *anyopaque, timeout_ms: i32) WaitReadableError!WaitReadableResult,
         kick_wait: *const fn (ptr: *anyopaque) void,
         resize: *const fn (ptr: *anyopaque, cols: u16, rows: u16) ResizeError!void,
         control: *const fn (ptr: *anyopaque, signal: ControlSignal) void,
@@ -72,7 +78,7 @@ pub const Pty = struct {
         return self.vtable.read(self.ptr, buf);
     }
 
-    pub fn waitReadable(self: Pty, timeout_ms: i32) WaitReadableError!bool {
+    pub fn waitReadable(self: Pty, timeout_ms: i32) WaitReadableError!WaitReadableResult {
         return self.vtable.wait_readable(self.ptr, timeout_ms);
     }
 

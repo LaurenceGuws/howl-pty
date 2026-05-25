@@ -1,6 +1,5 @@
 const std = @import("std");
 const ffi = @import("ffi");
-
 const c = @cImport({
     @cInclude("howl_pty.h");
 });
@@ -15,6 +14,16 @@ comptime {
     std.debug.assert(@intFromEnum(ffi.HowlPtyCallStatus.missing_handle) == c.HOWL_PTY_CALL_MISSING_HANDLE);
     std.debug.assert(@intFromEnum(ffi.HowlPtyCallStatus.invalid_argument) == c.HOWL_PTY_CALL_INVALID_ARGUMENT);
     std.debug.assert(@intFromEnum(ffi.HowlPtyCallStatus.failed) == c.HOWL_PTY_CALL_FAILED);
+    std.debug.assert(c.HOWL_PTY_TERMINAL_REASON_NONE == 0);
+    std.debug.assert(c.HOWL_PTY_TERMINAL_REASON_EXPLICIT_STOP == 1);
+    std.debug.assert(c.HOWL_PTY_TERMINAL_REASON_CHILD_EXIT == 2);
+    std.debug.assert(c.HOWL_PTY_TERMINAL_REASON_TRANSPORT_EOF == 3);
+    std.debug.assert(c.HOWL_PTY_TERMINAL_REASON_TRANSPORT_FAILURE == 4);
+    std.debug.assert(c.HOWL_PTY_WAIT_OUTCOME_NONE == 0);
+    std.debug.assert(c.HOWL_PTY_WAIT_OUTCOME_READY == 1);
+    std.debug.assert(c.HOWL_PTY_WAIT_OUTCOME_TIMEOUT == 2);
+    std.debug.assert(c.HOWL_PTY_WAIT_OUTCOME_WAKE == 3);
+    std.debug.assert(c.HOWL_PTY_WAIT_OUTCOME_STOPPED == 4);
 }
 
 test "pty abi null handles report missing-handle contract" {
@@ -74,9 +83,13 @@ test "pty abi lifecycle reports shipped snapshot contract" {
     try std.testing.expectEqual(@as(u16, 132), before.cols);
     try std.testing.expectEqual(@as(u16, 43), before.rows);
     try std.testing.expectEqual(@as(u8, c.HOWL_PTY_SESSION_IDLE), before.session_status);
+    try std.testing.expectEqual(@as(u8, c.HOWL_PTY_TERMINAL_REASON_NONE), before.terminal_reason);
+    try std.testing.expectEqual(@as(u8, c.HOWL_PTY_WAIT_OUTCOME_NONE), before.last_wait_outcome);
 
     try std.testing.expectEqual(c.HOWL_PTY_CALL_OK, ffi.sessionStart(handle));
     const after = ffi.sessionSnapshot(handle);
     try std.testing.expectEqual(c.HOWL_PTY_CALL_OK, after.status);
     try std.testing.expectEqual(@as(u8, c.HOWL_PTY_SESSION_ACTIVE), after.session_status);
+    try std.testing.expectEqual(@as(u8, c.HOWL_PTY_TERMINAL_REASON_NONE), after.terminal_reason);
+    try std.testing.expectEqual(@as(u8, c.HOWL_PTY_WAIT_OUTCOME_NONE), after.last_wait_outcome);
 }

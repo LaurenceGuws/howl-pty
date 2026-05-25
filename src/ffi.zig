@@ -17,8 +17,9 @@ pub const FfiSnapshot = extern struct {
     cols: u16 = 0,
     rows: u16 = 0,
     session_status: u8 = 0,
+    terminal_reason: u8 = 0,
+    last_wait_outcome: u8 = 0,
     reserved0: u8 = 0,
-    reserved1: u16 = 0,
     resize_count: u32 = 0,
 };
 
@@ -98,6 +99,8 @@ fn snapshotOut(value: session.Snapshot) FfiSnapshot {
         .cols = value.cols,
         .rows = value.rows,
         .session_status = @intFromEnum(value.status),
+        .terminal_reason = if (value.terminal_reason) |reason| @intFromEnum(reason) else 0,
+        .last_wait_outcome = @intFromEnum(value.last_wait_outcome),
         .resize_count = value.resize_count,
     };
 }
@@ -272,6 +275,8 @@ test "session ffi handle path covers lifecycle and transport progress" {
     try std.testing.expectEqual(@as(i32, 0), snap.status);
     try std.testing.expectEqual(@as(u16, 80), snap.cols);
     try std.testing.expectEqual(@as(u16, 24), snap.rows);
+    try std.testing.expectEqual(@as(u8, 0), snap.terminal_reason);
+    try std.testing.expectEqual(@as(u8, @intFromEnum(session.WaitOutcome.none)), snap.last_wait_outcome);
 }
 
 test "session ffi publishes typed control signals through the shipped abi" {
@@ -335,3 +340,88 @@ test "session ffi exports the shipped PTY wait wake seam" {
     sessionKickWait(handle);
     try std.testing.expectEqual(@as(u32, 1), mem_pty.kick_wait_calls);
 }
+
+test "session ffi snapshot exports terminal reason and wait outcome truth" {
+    var scripted = TestSnapshotPty{
+        .wait_step = .{ .err = error.NotStarted },
+    };
+
+    var state = try session.Session.init(.{
+        .allocator = std.testing.allocator,
+        .cols = 80,
+        .rows = 24,
+        .pending_capacity = 8,
+        .pty = scripted.asPty(),
+    });
+    defer state.deinit();
+    try state.start();
+
+    const handle: SessionHandle = @ptrCast(&state);
+    try std.testing.expectEqual(@as(u8, 0), sessionWaitReadable(handle, 1));
+
+    const snap = sessionSnapshot(handle);
+    try std.testing.expectEqual(@as(i32, 0), snap.status);
+    try std.testing.expectEqual(@as(u8, @intFromEnum(session.Status.stopped)), snap.session_status);
+    try std.testing.expectEqual(@as(u8, @intFromEnum(session.TerminalReason.child_exit)), snap.terminal_reason);
+    try std.testing.expectEqual(@as(u8, @intFromEnum(session.WaitOutcome.stopped)), snap.last_wait_outcome);
+}
+
+const TestSnapshotPty = struct {
+    started: bool = false,
+    wait_step: union(enum) {
+        ready,
+        timeout,
+        wake,
+        err: pty.Pty.WaitReadableError,
+    },
+
+    fn asPty(self: *TestSnapshotPty) pty.Pty {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    const vtable: pty.Pty.VTable = .{
+        .start = startPty,
+        .stop = stopPty,
+        .write = writePty,
+        .read = readPty,
+        .wait_readable = waitReadablePty,
+        .kick_wait = kickWaitPty,
+        .resize = resizePty,
+        .control = controlPty,
+    };
+
+    fn startPty(ptr: *anyopaque, _: u16, _: u16) pty.Pty.StartError!void {
+        const self: *TestSnapshotPty = @ptrCast(@alignCast(ptr));
+        if (self.started) return error.AlreadyStarted;
+        self.started = true;
+    }
+
+    fn stopPty(ptr: *anyopaque) void {
+        const self: *TestSnapshotPty = @ptrCast(@alignCast(ptr));
+        self.started = false;
+    }
+
+    fn writePty(_: *anyopaque, bytes: []const u8) pty.Pty.WriteError!usize {
+        return bytes.len;
+    }
+
+    fn readPty(_: *anyopaque, _: []u8) pty.Pty.ReadError!usize {
+        return 0;
+    }
+
+    fn waitReadablePty(ptr: *anyopaque, _: i32) pty.Pty.WaitReadableError!pty.Pty.WaitReadableResult {
+        const self: *TestSnapshotPty = @ptrCast(@alignCast(ptr));
+        return switch (self.wait_step) {
+            .ready => .ready,
+            .timeout => .timeout,
+            .wake => .wake,
+            .err => |err| err,
+        };
+    }
+
+    fn kickWaitPty(_: *anyopaque) void {}
+
+    fn resizePty(_: *anyopaque, _: u16, _: u16) pty.Pty.ResizeError!void {}
+
+    fn controlPty(_: *anyopaque, _: pty.ControlSignal) void {}
+};
