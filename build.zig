@@ -43,11 +43,46 @@ pub fn build(b: *std.Build) void {
         run_mod_tests.has_side_effects = true;
     }
 
+    const abi_options = b.addOptions();
+    abi_options.addOption(PtyVariant, "pty_variant", selected_variant);
+    const abi_mod = b.createModule(.{
+        .root_source_file = b.path("src/test/abi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    abi_mod.addIncludePath(b.path("include"));
+    abi_mod.addOptions("session_options", abi_options);
+    const abi_ffi_mod = b.createModule(.{
+        .root_source_file = b.path("src/ffi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    abi_ffi_mod.addOptions("session_options", abi_options);
+    abi_mod.addImport("ffi", abi_ffi_mod);
+    const abi_tests = b.addTest(.{
+        .name = "test-abi",
+        .root_module = abi_mod,
+        .filters = b.args orelse &.{},
+    });
+    abi_tests.use_llvm = true;
+    const run_abi_tests = b.addRunArtifact(abi_tests);
+    if (b.args != null) {
+        run_abi_tests.has_side_effects = true;
+    }
+
+    const check_step = b.step("check", "Build the shipped PTY ABI without installing it");
     const test_step = b.step("test", "Run all tests");
+    const test_abi_step = b.step("test:abi", "Run shipped PTY ABI contract tests");
+    const test_abi_build_step = b.step("test:abi:build", "Build shipped PTY ABI contract tests");
     const test_unit_step = b.step("test:unit", "Run unit tests");
     const test_unit_build_step = b.step("test:unit:build", "Build unit tests");
-    test_unit_build_step.dependOn(&b.addInstallArtifact(mod_tests, .{}).step);
+    test_abi_build_step.dependOn(&abi_tests.step);
+    test_abi_step.dependOn(&run_abi_tests.step);
+    test_unit_build_step.dependOn(&mod_tests.step);
     test_unit_step.dependOn(&run_mod_tests.step);
+    test_step.dependOn(test_abi_step);
     test_step.dependOn(test_unit_step);
 
     const ffi_mod = b.createModule(.{
@@ -65,8 +100,7 @@ pub fn build(b: *std.Build) void {
         .linkage = .dynamic,
         .root_module = ffi_mod,
     });
-    const ffi_build_step = b.step("ffi:build", "Build the howl-pty C FFI library");
-    ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
+    check_step.dependOn(&ffi_lib.step);
     b.installArtifact(ffi_lib);
     b.installFile("include/howl_pty.h", "include/howl_pty.h");
 }
