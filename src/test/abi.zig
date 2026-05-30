@@ -1,8 +1,12 @@
 const std = @import("std");
 const ffi = @import("ffi");
-const c = @cImport({
+pub const c = @cImport({
     @cInclude("howl_pty.h");
 });
+
+test {
+    _ = @import("ffi.zig");
+}
 
 comptime {
     std.debug.assert(@sizeOf(ffi.FfiSnapshot) == @sizeOf(c.HowlPtySnapshot));
