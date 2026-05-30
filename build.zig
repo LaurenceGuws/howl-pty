@@ -51,17 +51,39 @@ pub fn build(b: *std.Build) void {
         run_abi_tests.has_side_effects = true;
     }
 
+    const integration_mod = b.createModule(.{
+        .root_source_file = b.path("src/libhowl_pty_integration.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const integration_tests = b.addTest(.{
+        .name = "test-integration",
+        .root_module = integration_mod,
+        .filters = b.args orelse &.{},
+    });
+    integration_tests.use_llvm = true;
+    const run_integration_tests = b.addRunArtifact(integration_tests);
+    if (b.args != null) {
+        run_integration_tests.has_side_effects = true;
+    }
+
     const check_step = b.step("check", "Build the shipped PTY ABI without installing it");
     const test_step = b.step("test", "Run all tests");
     const test_abi_step = b.step("test:abi", "Run shipped PTY ABI contract tests");
     const test_abi_build_step = b.step("test:abi:build", "Build shipped PTY ABI contract tests");
+    const test_integration_step = b.step("test:integration", "Run PTY integration tests");
+    const test_integration_build_step = b.step("test:integration:build", "Build PTY integration tests");
     const test_unit_step = b.step("test:unit", "Run unit tests");
     const test_unit_build_step = b.step("test:unit:build", "Build unit tests");
     test_abi_build_step.dependOn(&abi_tests.step);
     test_abi_step.dependOn(&run_abi_tests.step);
+    test_integration_build_step.dependOn(&integration_tests.step);
+    test_integration_step.dependOn(&run_integration_tests.step);
     test_unit_build_step.dependOn(&mod_tests.step);
     test_unit_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(test_abi_step);
+    test_step.dependOn(test_integration_step);
     test_step.dependOn(test_unit_step);
 
     const ffi_mod = b.createModule(.{
