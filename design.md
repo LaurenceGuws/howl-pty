@@ -1,125 +1,54 @@
-# Design
+# howl-pty Design
 
-Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../reference-index.md`](../reference-index.md)
+Updated: 2026-05-30.
+
+Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../project-memory.md`](../project-memory.md), [`../libs.yaml`](../libs.yaml)
 
 ## Purpose
+
 `howl-pty` owns PTY-backed child transport orchestration.
 
-It does not model terminal semantics. It owns queueing, transport start and stop, transport reads and writes, resize propagation, and PTY launch wiring.
+It owns PTY variants, child I/O, resize delivery, control signals, wait/kick behavior, lifecycle/result truth, and transport state. It does not model terminal semantics, host event loops, VT parsing, rendering, or presentation.
 
 ## Public Surface
-- The only shipped embedding contract is `include/howl_pty.h` plus `howl_pty_*` exported symbols.
-- The only public root that may export that contract is `src/libhowl_pty.zig`.
-- Opaque session handles plus typed status, snapshot, pump, read, and transport-limit structs are the public ABI.
-- There is no separate repo-local Zig facade root for tests or host integration.
-- Internal workspace wiring is not a public contract and is not a preservation target.
-- Accepted cleanup results now locked:
-  - `src/howl_pty.zig` is deleted
-  - `src/pty/selected_transport.zig` is deleted
-  - Android support is deleted
 
-```mermaid
-classDiagram
-    class HowlPtyAbi
-    class Session {
-      +init()
-      +start()
-      +stop()
-      +publishHostInput()
-      +flushOutboundInput()
-      +waitReadable()
-      +ingestTransport()
-      +resize()
-      +snapshot()
-    }
-    class Pty
+- The shipped embedding contract is `include/howl_pty.h` plus exported `howl_pty_*` symbols.
+- `src/libhowl_pty.zig` is the C ABI export root.
+- Session handles are opaque.
+- Internal Zig files are not host integration surfaces.
 
-    HowlPtyAbi --> Session
-    Session --> Pty
-```
+## Owners
 
-## Ownership Rules
-- `Session` owns pending outbound input, current size, lifecycle state, and transport-facing counters.
-- `Session` owns either one external PTY handle or one concrete owned PTY backend.
-- `Session` talks to the abstract `Pty` interface only.
-- Test PTY variants are for repo-local conformance testing only.
-- Concrete platform PTY implementations stay internal to `howl-pty`; host transport ownership stays behind `Session` and the C ABI.
+- `src/ffi.zig` translates the C ABI only.
+- `src/session.zig` owns session lifecycle, queued host input, current geometry, transport state, counters, and lifecycle/result snapshots.
+- `src/pty.zig` owns the internal PTY interface used by `Session`.
+- `src/pty/posix.zig` owns POSIX PTY realization.
+- `src/pty/unix.zig` owns Unix backend details behind the PTY interface.
+- `src/pty/pty_test.zig` owns repo-local test PTY behavior only.
 
-## Lifecycle
-```mermaid
-stateDiagram-v2
-    [*] --> Idle
-    Idle --> Active: start()
-    Active --> Stopped: stop()
-    Active --> Stopped: transport failure
-    Idle --> Stopped: stop()
-    Stopped --> [*]
-```
+## Main Flow
 
-## Main Flows
-### Host Input To PTY
-```mermaid
-sequenceDiagram
-    participant Host
-    participant S as Session
-    participant P as Pty
+1. Host initializes an opaque PTY session handle.
+2. Host starts the session with host-owned launch policy and startup geometry.
+3. Host publishes input bytes and pumps bounded outbound writes.
+4. Host or a host wait thread waits for readability through the PTY ABI.
+5. Host reads transport bytes and feeds them to VT.
+6. Host resizes the session when render/VT geometry changes.
+7. Host publishes typed control signals through the ABI.
+8. Host stops/deinitializes the session and observes typed lifecycle/result truth.
 
-    Host->>S: publishHostInput(bytes)
-    Host->>S: flushOutboundInput()
-    S->>P: write(bytes)
-```
+## Invariants
 
-### PTY Output To Host Consumer
-```mermaid
-sequenceDiagram
-    participant Host
-    participant S as Session
-    participant P as Pty
-    participant Sink
-
-    Host->>S: waitReadable(timeout)
-    S->>P: waitReadable(timeout)
-    Host->>S: ingestTransport(buf, sink)
-    S->>P: read(buf)
-    S->>Sink: onTransportBytes(bytes)
-```
-
-## API Contracts
-- `howl_pty_session_init` returns an opaque owned session handle; callers must eventually call `howl_pty_session_deinit`.
-- `howl_pty_session_start`, `howl_pty_session_stop`, `howl_pty_session_wait_readable`, and `howl_pty_session_read` cover the host transport lifecycle and read path.
-- `howl_pty_session_start` applies the Session-owned initial `cols` and `rows` to the started
-  transport before host steady state, so child-visible startup geometry cannot fall back to a
-  transport-local default.
-- child shell environment policy such as `TERM` advertisement or prompt customization is not PTY
-  ownership. PTY launch inherits host-owned environment policy and performs session wiring, cwd, and
-  exec only.
-- `HOWL_PTY_TRANSPORT_CHUNK_BYTES` and `howl_pty_transport_pump_limits` expose the Session-owned transport read chunk and named burst policy so hosts can size scratch buffers and select a transport mode without inventing local PTY read budgets.
-- `howl_pty_session_publish_signal` publishes one typed PTY control signal from the shipped `HowlPtyControlSignal` contract.
-- `howl_pty_session_publish_input` queues host input, and `howl_pty_session_pump_outbound` advances the bounded outbound step.
-- `howl_pty_session_kick_wait` is the shipped PTY-owner wake seam for breaking `howl_pty_session_wait_readable` without inventing a host-local fake wake path or transport teardown.
-- queued outbound input remains Session-owned until a transport is attached and accepts bytes; the Session must not silently discard backlog because a transport is absent.
-- `howl_pty_session_pending_bytes` and `howl_pty_session_bytes_applied` expose bounded transport accounting to hosts.
-- `howl_pty_session_resize` and `howl_pty_session_snapshot` cover geometry and state observation.
-- `HowlPtySessionStatus` and `HowlPtyControlSignal` are shipped header-declared contract values.
-- Hosts and embedders consume that ABI through the header and exported symbols only.
-- Zig root imports are not an acceptable host integration path and are not a preservation target.
-
-## Internal Owner API
-- Build-selected transport construction is repo-local wiring through `Session.init(.{ .launch = ... })`.
-- `session.transport_chunk_bytes` and `Session.transportPumpLimits(mode)` are the repo-local owner API for the bounded transport read chunk and per-mode burst limits.
-- Session does not preserve extra attach/detach, snapshot-restore, or input-and-pump helper posture as package API shape.
-- The repo-local `Pty.start(cols, rows)` contract consumes Session-owned startup geometry directly.
-  Concrete PTY owners must not invent a transport-local default grid before child steady state.
-- It is not part of the shipped C ABI contract.
+- Session owns queued outbound input until transport accepts it.
+- Startup geometry is session-owned and applied before child steady state.
+- Wait/kick is a PTY-owner seam; hosts must not tear down transport just to break a wait.
+- Child shell environment policy such as `TERM` is host-owned and inherited by PTY launch.
+- Concrete PTY implementations stay internal behind `Session` and `Pty`.
+- ABI results must distinguish lifecycle/transport truth instead of collapsing everything into booleans.
 
 ## Non-Goals
-- Terminal parsing or screen state.
-- Font or rendering concerns.
-- Host event loops.
 
-## Change Rules
-- Keep the embedding boundary C ABI first in docs, roots, and build wiring.
-- Delete wrapper namespace roots instead of preserving parallel Zig public stories.
-- Concrete PTY implementations must stay behind `Session` and `Pty`.
-- Queue policy belongs in `Session`, not in hosts.
-- `Pty.kickWait()` must be able to break `Pty.waitReadable()` on shipped backends so the owner thread can reschedule bounded work without a fake wake path.
+- Terminal parsing or screen state.
+- Host input/event loops.
+- Fonts, rendering, or presentation.
+- Shell prompt customization.
