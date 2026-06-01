@@ -26,7 +26,16 @@ pub const Mem = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    const vtable: Pty.VTable = .{
+        .start = startPty,
+        .stop = stopPty,
+        .write = writePty,
+        .read = readPty,
+        .wait_readable = waitReadablePty,
+        .kick_wait = kickWaitPty,
+        .resize = resizePty,
+        .control = controlPty,
+    };
     fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
         const self: *Mem = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
@@ -94,7 +103,16 @@ pub const Partial = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    const vtable: Pty.VTable = .{
+        .start = startPty,
+        .stop = stopPty,
+        .write = writePty,
+        .read = readPty,
+        .wait_readable = waitReadablePty,
+        .kick_wait = kickWaitPty,
+        .resize = resizePty,
+        .control = controlPty,
+    };
     fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
         const self: *Partial = @ptrCast(@alignCast(ptr));
         if (self.started) return error.AlreadyStarted;
@@ -149,7 +167,16 @@ pub const Fail = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Pty.VTable = .{ .start = startPty, .stop = stopPty, .write = writePty, .read = readPty, .wait_readable = waitReadablePty, .kick_wait = kickWaitPty, .resize = resizePty, .control = controlPty };
+    const vtable: Pty.VTable = .{
+        .start = startPty,
+        .stop = stopPty,
+        .write = writePty,
+        .read = readPty,
+        .wait_readable = waitReadablePty,
+        .kick_wait = kickWaitPty,
+        .resize = resizePty,
+        .control = controlPty,
+    };
     fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
         _ = ptr;
         _ = cols;

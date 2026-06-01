@@ -544,7 +544,17 @@ fn notifyParentChildSessionReady(ready_write_fd: ?posix.fd_t) Pty.StartError!voi
     }
 }
 
-pub fn childProcess(master_fd: posix.fd_t, slave_fd: posix.fd_t, wake_read_fd: ?posix.fd_t, wake_write_fd: ?posix.fd_t, ready_write_fd: ?posix.fd_t, shell_path: [:0]const u8, command: ?[*:0]const u8, cwd: ?[*:0]const u8, setup: ?ChildProcessSetupFn) Pty.StartError!void {
+pub fn childProcess(
+    master_fd: posix.fd_t,
+    slave_fd: posix.fd_t,
+    wake_read_fd: ?posix.fd_t,
+    wake_write_fd: ?posix.fd_t,
+    ready_write_fd: ?posix.fd_t,
+    shell_path: [:0]const u8,
+    command: ?[*:0]const u8,
+    cwd: ?[*:0]const u8,
+    setup: ?ChildProcessSetupFn,
+) Pty.StartError!void {
     try setupChildProcessFds(.{
         .master_fd = master_fd,
         .slave_fd = slave_fd,
