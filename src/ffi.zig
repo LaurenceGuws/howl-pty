@@ -74,14 +74,7 @@ fn bytesOut(ptr: ?[*]u8, len: usize) ?[]u8 {
     return ptr.?[0..len];
 }
 
-fn launchConfigIn(
-    shell_ptr: ?[*]const u8,
-    shell_len: usize,
-    command_ptr: ?[*]const u8,
-    command_len: usize,
-    start_path_ptr: ?[*]const u8,
-    start_path_len: usize,
-) ?pty.Launch {
+fn launchConfigIn(shell_ptr: ?[*]const u8, shell_len: usize, command_ptr: ?[*]const u8, command_len: usize, start_path_ptr: ?[*]const u8, start_path_len: usize) ?pty.Launch {
     const shell = bytesIn(shell_ptr, shell_len) orelse return null;
     const command = bytesIn(command_ptr, command_len) orelse return null;
     const start_path = bytesIn(start_path_ptr, start_path_len) orelse return null;
@@ -147,17 +140,7 @@ fn resizeStatus(err: error{InvalidDimensions}) i32 {
     };
 }
 
-pub fn sessionInit(
-    shell_ptr: ?[*]const u8,
-    shell_len: usize,
-    command_ptr: ?[*]const u8,
-    command_len: usize,
-    start_path_ptr: ?[*]const u8,
-    start_path_len: usize,
-    cols: u16,
-    rows: u16,
-    pending_capacity: usize,
-) callconv(.c) SessionHandle {
+pub fn sessionInit(shell_ptr: ?[*]const u8, shell_len: usize, command_ptr: ?[*]const u8, command_len: usize, start_path_ptr: ?[*]const u8, start_path_len: usize, cols: u16, rows: u16, pending_capacity: usize) callconv(.c) SessionHandle {
     const launch = launchConfigIn(shell_ptr, shell_len, command_ptr, command_len, start_path_ptr, start_path_len) orelse return null;
     // The shipped PTY ABI still exposes architecture-sized queue capacity at this seam.
     // Range-check it once, then keep Session ownership typed as TransportByteLimit.
