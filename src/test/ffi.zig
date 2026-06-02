@@ -2,6 +2,19 @@ const std = @import("std");
 const ffi = @import("ffi");
 const c = @import("abi.zig").c;
 
+test "session ffi rejects invalid init arguments through null handle" {
+    try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 1, null, 0, null, 0, 80, 24, 64));
+    try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 0, null, 1, null, 0, 80, 24, 64));
+    try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 0, null, 0, null, 1, 80, 24, 64));
+    try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 0, null, 0, null, 0, 0, 24, 64));
+    try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 0, null, 0, null, 0, 80, 0, 64));
+    try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 0, null, 0, null, 0, 80, 24, 0));
+
+    if (@bitSizeOf(usize) > @bitSizeOf(u32)) {
+        try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 0, null, 0, null, 0, 80, 24, @as(usize, std.math.maxInt(u32)) + 1));
+    }
+}
+
 test "session ffi handle path covers lifecycle and transport progress" {
     const handle = ffi.sessionInit(null, 0, null, 0, null, 0, 80, 24, 64);
     defer ffi.sessionDeinit(handle);
