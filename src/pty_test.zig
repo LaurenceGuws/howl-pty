@@ -1,6 +1,6 @@
 const std = @import("std");
-const pty_api = @import("../pty.zig");
-const pty = @import("../pty/pty_test.zig");
+const pty_api = @import("pty.zig");
+const pty = @import("pty/pty_test.zig");
 
 test "pty control signals stay typed across the interface" {
     const allocator = std.testing.allocator;

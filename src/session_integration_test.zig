@@ -1,6 +1,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const session = @import("../session.zig");
+const session = @import("session.zig");
 
 const real_pty_timeout_ms: i32 = 100;
 const real_pty_max_turns: u32 = 50;

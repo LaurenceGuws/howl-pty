@@ -1,7 +1,7 @@
 const std = @import("std");
-const session = @import("../session.zig");
-const pty_api = @import("../pty.zig");
-const pty = @import("../pty/pty_test.zig");
+const session = @import("session.zig");
+const pty_api = @import("pty.zig");
+const pty = @import("pty/pty_test.zig");
 
 const ScriptedPty = struct {
     started: bool = false,

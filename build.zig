@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const unit_mod = b.createModule(.{
-        .root_source_file = b.path("src/libhowl_pty.zig"),
+        .root_source_file = b.path("src/test_unit.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
     }
 
     const integration_mod = b.createModule(.{
-        .root_source_file = b.path("src/libhowl_pty_integration.zig"),
+        .root_source_file = b.path("src/test_integration.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
