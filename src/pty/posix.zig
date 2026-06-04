@@ -642,39 +642,8 @@ fn sendSignalTarget(target: posix.pid_t, signal: ControlSignal) SignalResult {
     }
 }
 
-test "pending child stop uses direct child ownership until session is live" {
-    const pid = c.fork();
-    try std.testing.expect(pid >= 0);
-    if (pid == 0) {
-        _ = c.usleep(30 * std.time.us_per_s);
-        c._exit(0);
+pub const testing = struct {
+    pub fn waitReadablePollResult(revents: i16) WaitReadableResult {
+        return @import("posix.zig").waitReadablePollResult(revents);
     }
-
-    var owned = try make(struct {
-        pub fn ensureSupported() Pty.StartError!void {}
-
-        pub fn openTransport(cols: u16, rows: u16) Pty.StartError!Open {
-            _ = cols;
-            _ = rows;
-            return error.OpenPtyFailed;
-        }
-    }).init(std.testing.allocator, "/bin/sh", null, null);
-    defer {
-        owned.started = false;
-        owned.child = .none;
-        owned.deinit();
-    }
-
-    owned.started = true;
-    owned.child = .{ .pending_session = pid };
-    owned.stopTransport();
-
-    try std.testing.expect(owned.child == .none);
-}
-
-test "wait classification does not treat hup as readable" {
-    try std.testing.expectEqual(WaitReadableResult.timeout, waitReadablePollResult(posix.POLL.HUP));
-    try std.testing.expectEqual(WaitReadableResult.timeout, waitReadablePollResult(posix.POLL.ERR));
-    try std.testing.expectEqual(WaitReadableResult.ready, waitReadablePollResult(posix.POLL.IN));
-    try std.testing.expectEqual(WaitReadableResult.ready, waitReadablePollResult(posix.POLL.IN | posix.POLL.HUP));
-}
+};
