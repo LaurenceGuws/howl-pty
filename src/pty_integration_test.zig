@@ -116,13 +116,13 @@ test "owned unix pty natural exit becomes not started" {
     transport.stop();
 }
 
-test "owned unix pty routes interrupt to the child and then exits naturally" {
+test "owned unix pty interrupt reaches the child group" {
     try requireOwnedUnixPty();
 
     var owned = try pty_api.Owned.init(
         std.testing.allocator,
         "/bin/sh",
-        "trap \"printf 'caught\\n'; sleep 0.2; exit 0\" INT; printf 'ready\\n'; while :; do sleep 1; done",
+        "/bin/sh -c \"trap \\\"printf 'child\\n'; exit 0\\\" INT; printf 'ready\\n'; while :; do sleep 1; done\"",
         null,
     );
     defer owned.deinit();
@@ -134,8 +134,8 @@ test "owned unix pty routes interrupt to the child and then exits naturally" {
     try std.testing.expectEqualStrings("ready", try readOwnedTransportLine(transport, line_buf[0..]));
 
     transport.control(.interrupt);
-    try std.testing.expectEqualStrings("caught", try readOwnedTransportLine(transport, line_buf[0..]));
-
+    try std.testing.expectEqualStrings("child", try readOwnedTransportLine(transport, line_buf[0..]));
     try waitForOwnedTransportNotStarted(transport);
+
     transport.stop();
 }

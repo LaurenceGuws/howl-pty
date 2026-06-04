@@ -394,7 +394,7 @@ pub fn make(comptime Backend: type) type {
             const self: *Self = @ptrCast(@alignCast(ptr));
             self.refreshChildState();
             if (!self.transportReady()) return;
-            if (self.childPid()) |pid| _ = sendSignal(pid, signal);
+            if (self.childPid()) |pid| _ = sendGroupSignal(pid, signal);
         }
     };
 }
