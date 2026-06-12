@@ -70,6 +70,11 @@ pub fn make(comptime Backend: type) type {
             live: posix.pid_t,
         };
 
+        const StartPipes = struct {
+            wake: Wake,
+            child_ready: ChildReady,
+        };
+
         pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8, start_path: ?[]const u8) (error{OutOfMemory} || Pty.StartError)!Self {
             try Backend.ensureSupported();
 
@@ -120,25 +125,50 @@ pub fn make(comptime Backend: type) type {
             const transport = try Backend.openTransport(cols, rows);
             errdefer closeTransport(transport);
 
+            const pipes = try openStartPipes();
+            errdefer closeStartPipes(pipes);
+
+            try configureMaster(transport.master_fd);
+            const pid = try self.forkChild(transport, pipes);
+            self.adoptParentTransport(transport, pipes, pid, cols, rows);
+            errdefer self.stopTransport();
+
+            try self.awaitChildSession(pipes.child_ready.read_fd);
+            self.child = .{ .live = pid };
+            self.assertStarted();
+        }
+
+        fn openStartPipes() Pty.StartError!StartPipes {
             const wake = try openWakePipe();
             errdefer closeWakePipe(wake);
 
             const child_ready = try openChildReadyPipe();
             errdefer closeChildReadyPipe(child_ready);
 
-            try setCloseOnExec(transport.master_fd);
-            try setNonBlocking(transport.master_fd);
+            return .{ .wake = wake, .child_ready = child_ready };
+        }
 
+        fn closeStartPipes(pipes: StartPipes) void {
+            closeChildReadyPipe(pipes.child_ready);
+            closeWakePipe(pipes.wake);
+        }
+
+        fn configureMaster(master_fd: posix.fd_t) Pty.StartError!void {
+            try setCloseOnExec(master_fd);
+            try setNonBlocking(master_fd);
+        }
+
+        fn forkChild(self: *Self, transport: Open, pipes: StartPipes) Pty.StartError!posix.pid_t {
             const pid = c.fork();
             if (pid < 0) return error.OpenPtyFailed;
             if (pid == 0) {
-                _ = c.close(@intCast(child_ready.read_fd));
+                _ = c.close(@intCast(pipes.child_ready.read_fd));
                 childProcess(
                     transport.master_fd,
                     transport.slave_fd,
-                    wake.read_fd,
-                    wake.write_fd,
-                    child_ready.write_fd,
+                    pipes.wake.read_fd,
+                    pipes.wake.write_fd,
+                    pipes.child_ready.write_fd,
                     self.shell_path,
                     self.command_ptr,
                     self.start_path_ptr,
@@ -146,20 +176,22 @@ pub fn make(comptime Backend: type) type {
                 ) catch c._exit(127);
                 unreachable;
             }
+            return pid;
+        }
 
+        fn adoptParentTransport(self: *Self, transport: Open, pipes: StartPipes, pid: posix.pid_t, cols: u16, rows: u16) void {
             _ = c.close(@intCast(transport.slave_fd));
-            _ = c.close(@intCast(child_ready.write_fd));
+            _ = c.close(@intCast(pipes.child_ready.write_fd));
             self.master_fd = transport.master_fd;
-            self.wake_read_fd = wake.read_fd;
-            self.wake_write_fd = wake.write_fd;
+            self.wake_read_fd = pipes.wake.read_fd;
+            self.wake_write_fd = pipes.wake.write_fd;
             self.child = .{ .pending_session = pid };
             self.last_cols = cols;
             self.last_rows = rows;
             self.started = true;
-            errdefer self.stopTransport();
-            try self.awaitChildSession(child_ready.read_fd);
-            self.child = .{ .live = pid };
+        }
 
+        fn assertStarted(self: *const Self) void {
             std.debug.assert(self.master_fd != null);
             std.debug.assert(self.wake_read_fd != null);
             std.debug.assert(self.wake_write_fd != null);
@@ -253,17 +285,18 @@ pub fn make(comptime Backend: type) type {
         fn stopLiveChild(self: *Self, pid: posix.pid_t) void {
             std.debug.assert(pid > 0);
             _ = sendGroupSignal(pid, .hangup);
-            if (waitChildWithDeadline(pid, stop_hangup_grace_ns)) {
+            if (waitChildWithDeadline(pid, stop_hangup_grace_ns) and waitProcessGroupMissing(pid, stop_hangup_grace_ns)) {
                 self.child = .none;
                 return;
             }
             _ = sendGroupSignal(pid, .terminate);
-            if (waitChildWithDeadline(pid, stop_terminate_grace_ns)) {
+            if (waitChildWithDeadline(pid, stop_terminate_grace_ns) and waitProcessGroupMissing(pid, stop_terminate_grace_ns)) {
                 self.child = .none;
                 return;
             }
             _ = sendGroupSignal(pid, .kill);
             waitChildBlocking(pid);
+            _ = waitProcessGroupMissing(pid, stop_terminate_grace_ns);
             self.child = .none;
         }
 
@@ -326,19 +359,32 @@ pub fn make(comptime Backend: type) type {
 
         fn readPty(ptr: *anyopaque, buf: []u8) Pty.ReadError!usize {
             const self: *Self = @ptrCast(@alignCast(ptr));
-            self.refreshChildState();
-            if (!self.transportReady()) return error.NotStarted;
+            if (!self.started) return error.NotStarted;
+            const master_fd = self.master_fd orelse return error.NotStarted;
             if (buf.len == 0) return 0;
 
-            const n = c.read(self.master_fd.?, buf.ptr, buf.len);
+            const n = c.read(master_fd, buf.ptr, buf.len);
             if (n < 0) {
                 return switch (posix.errno(n)) {
-                    .AGAIN => error.WouldBlock,
+                    .AGAIN => {
+                        self.refreshChildState();
+                        if (!self.transportReady()) return error.NotStarted;
+                        return error.WouldBlock;
+                    },
+                    .IO => {
+                        self.refreshChildState();
+                        if (!self.transportReady()) return error.NotStarted;
+                        return error.ReadFailed;
+                    },
                     .INTR => error.Interrupted,
                     else => error.ReadFailed,
                 };
             }
-            if (n == 0) return error.EndOfStream;
+            if (n == 0) {
+                self.refreshChildState();
+                if (!self.transportReady()) return error.NotStarted;
+                return error.EndOfStream;
+            }
             return @intCast(n);
         }
 
@@ -360,6 +406,7 @@ pub fn make(comptime Backend: type) type {
                 self.drainWakePipe();
                 return .wake;
             }
+            if ((fds[0].revents & posix.POLL.IN) != 0) return .ready;
             if ((fds[0].revents & posix.POLL.HUP) != 0) {
                 self.refreshChildState();
                 if (!self.transportReady()) return error.NotStarted;
@@ -617,6 +664,33 @@ fn waitChildBlocking(pid: posix.pid_t) void {
             .INTR => continue,
             .CHILD => return,
             else => return,
+        }
+    }
+}
+
+fn waitProcessGroupMissing(pid: posix.pid_t, timeout_ns: u64) bool {
+    std.debug.assert(pid > 0);
+    return waitSignalTargetMissing(-pid, timeout_ns);
+}
+
+fn waitSignalTargetMissing(target: posix.pid_t, timeout_ns: u64) bool {
+    const wait_slices = @max(1, timeout_ns / stop_wait_slice_ns);
+    var slice_index: u64 = 0;
+    while (slice_index < wait_slices) : (slice_index += 1) {
+        if (!signalTargetExists(target)) return true;
+        _ = c.usleep(@intCast(stop_wait_slice_ns / std.time.ns_per_us));
+    }
+    return !signalTargetExists(target);
+}
+
+fn signalTargetExists(target: posix.pid_t) bool {
+    while (true) {
+        const res = c.kill(target, 0);
+        if (res == 0) return true;
+        switch (posix.errno(res)) {
+            .INTR => continue,
+            .SRCH => return false,
+            else => return true,
         }
     }
 }
