@@ -7,6 +7,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const pty_c_translate = b.addTranslateC(.{
+        .root_source_file = b.path("include/howl_pty.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const pty_c_mod = pty_c_translate.createModule();
 
     const unit_mod = b.createModule(.{
         .root_source_file = b.path("src/test_unit.zig"),
@@ -14,6 +20,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    unit_mod.addImport("howl_pty_c", pty_c_mod);
 
     const mod_tests = add_test_artifact(b, "test-unit", unit_mod);
     const run_mod_tests = add_test_run_artifact(b, mod_tests);
@@ -24,13 +31,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    abi_mod.addIncludePath(b.path("include"));
+    abi_mod.addImport("howl_pty_c", pty_c_mod);
     const abi_ffi_mod = b.createModule(.{
         .root_source_file = b.path("src/ffi.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
+    abi_ffi_mod.addImport("howl_pty_c", pty_c_mod);
     abi_mod.addImport("ffi", abi_ffi_mod);
     const abi_tests = add_test_artifact(b, "test-abi", abi_mod);
     const run_abi_tests = add_test_run_artifact(b, abi_tests);
@@ -41,6 +49,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    integration_mod.addImport("howl_pty_c", pty_c_mod);
     const integration_tests = add_test_artifact(b, "test-integration", integration_mod);
     const run_integration_tests = add_test_run_artifact(b, integration_tests);
 
@@ -68,6 +77,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    ffi_mod.addImport("howl_pty_c", pty_c_mod);
 
     const ffi_lib = b.addLibrary(.{
         .name = "howl_pty",

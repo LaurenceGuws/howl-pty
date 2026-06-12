@@ -1,6 +1,6 @@
 const std = @import("std");
 const ffi = @import("ffi");
-const c = @import("abi.zig").c;
+const c = @import("howl_pty_c");
 
 test "session ffi rejects invalid init arguments through null handle" {
     try std.testing.expectEqual(@as(ffi.SessionHandle, null), ffi.sessionInit(null, 1, null, 0, null, 0, 80, 24, 64));
@@ -41,26 +41,26 @@ test "session ffi rejects invalid control signals through the shipped abi" {
 
     try std.testing.expectEqual(@as(i32, 0), ffi.sessionPublishSignal(handle, c.HOWL_PTY_CONTROL_SIGNAL_INTERRUPT));
     try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlPtyCallStatus.invalid_argument)),
+        c.HOWL_PTY_CALL_INVALID_ARGUMENT,
         ffi.sessionPublishSignal(handle, 0),
     );
 }
 
 test "transport pump limits ffi exposes shipped PTY burst policy" {
     const normal = ffi.transportPumpLimits(c.HOWL_PTY_TRANSPORT_PUMP_NORMAL);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlPtyCallStatus.ok)), normal.status);
+    try std.testing.expectEqual(c.HOWL_PTY_CALL_OK, normal.status);
     try std.testing.expectEqual(@as(u32, c.HOWL_PTY_TRANSPORT_CHUNK_BYTES), normal.chunk_bytes);
     try std.testing.expectEqual(@as(u32, 16), normal.max_reads);
     try std.testing.expectEqual(@as(u32, 1024 * 1024), normal.max_bytes);
 
     const constrained = ffi.transportPumpLimits(c.HOWL_PTY_TRANSPORT_PUMP_CONSTRAINED);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlPtyCallStatus.ok)), constrained.status);
+    try std.testing.expectEqual(c.HOWL_PTY_CALL_OK, constrained.status);
     try std.testing.expectEqual(@as(u32, c.HOWL_PTY_TRANSPORT_CHUNK_BYTES), constrained.chunk_bytes);
     try std.testing.expectEqual(@as(u32, 2), constrained.max_reads);
     try std.testing.expectEqual(@as(u32, 128 * 1024), constrained.max_bytes);
 
     const invalid = ffi.transportPumpLimits(99);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlPtyCallStatus.invalid_argument)), invalid.status);
+    try std.testing.expectEqual(c.HOWL_PTY_CALL_INVALID_ARGUMENT, invalid.status);
 }
 
 test "session ffi exports the shipped PTY wait wake seam" {

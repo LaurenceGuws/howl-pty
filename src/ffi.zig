@@ -1,51 +1,9 @@
 const std = @import("std");
+const c = @import("abi.zig").c;
 const pty = @import("pty.zig");
 const session = @import("session.zig");
 
-pub const SessionHandle = ?*anyopaque;
-
-pub const HowlPtyCallStatus = enum(c_int) {
-    ok = 0,
-    missing_handle = -1,
-    invalid_argument = -2,
-    failed = -3,
-};
-
-pub const FfiSnapshot = extern struct {
-    status: i32 = @intFromEnum(HowlPtyCallStatus.failed),
-    cols: u16 = 0,
-    rows: u16 = 0,
-    session_status: u8 = 0,
-    terminal_reason: u8 = 0,
-    last_wait_outcome: u8 = 0,
-    reserved0: u8 = 0,
-    resize_count: u32 = 0,
-};
-
-pub const FfiOutboundPump = extern struct {
-    status: i32 = @intFromEnum(HowlPtyCallStatus.failed),
-    had_pending: u8 = 0,
-    has_pending: u8 = 0,
-    wait_readable: u8 = 0,
-    reserved0: u8 = 0,
-    drained: u64 = 0,
-};
-
-pub const FfiReadResult = extern struct {
-    status: i32 = @intFromEnum(HowlPtyCallStatus.failed),
-    any_read: u8 = 0,
-    reserved0: u8 = 0,
-    reserved1: u16 = 0,
-    reserved2: u32 = 0,
-    bytes_read: u64 = 0,
-};
-
-pub const FfiTransportPumpLimits = extern struct {
-    status: i32 = @intFromEnum(HowlPtyCallStatus.failed),
-    chunk_bytes: u32 = 0,
-    max_reads: u32 = 0,
-    max_bytes: u32 = 0,
-};
+pub const SessionHandle = c.HowlPtySessionHandle;
 
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
@@ -85,9 +43,9 @@ fn launchConfigIn(shell_ptr: ?[*]const u8, shell_len: usize, command_ptr: ?[*]co
     };
 }
 
-fn snapshotOut(value: session.Snapshot) FfiSnapshot {
+fn snapshotOut(value: session.Snapshot) c.HowlPtySnapshot {
     return .{
-        .status = @intFromEnum(HowlPtyCallStatus.ok),
+        .status = c.HOWL_PTY_CALL_OK,
         .cols = value.cols,
         .rows = value.rows,
         .session_status = @intFromEnum(value.status),
@@ -97,9 +55,9 @@ fn snapshotOut(value: session.Snapshot) FfiSnapshot {
     };
 }
 
-fn outboundPumpOut(value: session.OutboundInputPump) FfiOutboundPump {
+fn outboundPumpOut(value: session.OutboundInputPump) c.HowlPtyOutboundPump {
     return .{
-        .status = @intFromEnum(HowlPtyCallStatus.ok),
+        .status = c.HOWL_PTY_CALL_OK,
         .had_pending = boolByte(value.had_pending),
         .has_pending = boolByte(value.has_pending),
         .wait_readable = boolByte(value.wait_readable),
@@ -107,9 +65,9 @@ fn outboundPumpOut(value: session.OutboundInputPump) FfiOutboundPump {
     };
 }
 
-fn transportPumpLimitsOut(value: session.TransportPumpLimits) FfiTransportPumpLimits {
+fn transportPumpLimitsOut(value: session.TransportPumpLimits) c.HowlPtyTransportPumpLimits {
     return .{
-        .status = @intFromEnum(HowlPtyCallStatus.ok),
+        .status = c.HOWL_PTY_CALL_OK,
         .chunk_bytes = value.chunk_bytes,
         .max_reads = value.max_reads,
         .max_bytes = value.max_bytes,
@@ -130,13 +88,13 @@ fn startStatus(err: session.StartError) i32 {
         error.OpenPtyFailed,
         error.ShellUnavailable,
         error.UnsupportedPlatform,
-        => @intFromEnum(HowlPtyCallStatus.failed),
+        => c.HOWL_PTY_CALL_FAILED,
     };
 }
 
 fn resizeStatus(err: error{InvalidDimensions}) i32 {
     return switch (err) {
-        error.InvalidDimensions => @intFromEnum(HowlPtyCallStatus.invalid_argument),
+        error.InvalidDimensions => c.HOWL_PTY_CALL_INVALID_ARGUMENT,
     };
 }
 
@@ -176,9 +134,9 @@ pub fn sessionDeinit(handle: SessionHandle) callconv(.c) void {
 }
 
 pub fn sessionStart(handle: SessionHandle) callconv(.c) i32 {
-    const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
+    const owned = sessionFromHandle(handle) orelse return c.HOWL_PTY_CALL_MISSING_HANDLE;
     owned.start() catch |err| return startStatus(err);
-    return @intFromEnum(HowlPtyCallStatus.ok);
+    return c.HOWL_PTY_CALL_OK;
 }
 
 pub fn sessionStop(handle: SessionHandle) callconv(.c) void {
@@ -186,33 +144,33 @@ pub fn sessionStop(handle: SessionHandle) callconv(.c) void {
     owned.stop();
 }
 
-pub fn sessionSnapshot(handle: SessionHandle) callconv(.c) FfiSnapshot {
-    const owned = sessionFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.missing_handle) };
+pub fn sessionSnapshot(handle: SessionHandle) callconv(.c) c.HowlPtySnapshot {
+    const owned = sessionFromHandle(handle) orelse return .{ .status = c.HOWL_PTY_CALL_MISSING_HANDLE, .cols = 0, .rows = 0, .session_status = 0, .terminal_reason = 0, .last_wait_outcome = 0, .reserved0 = 0, .resize_count = 0 };
     return snapshotOut(owned.snapshot());
 }
 
 pub fn sessionResize(handle: SessionHandle, cols: u16, rows: u16) callconv(.c) i32 {
-    const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
+    const owned = sessionFromHandle(handle) orelse return c.HOWL_PTY_CALL_MISSING_HANDLE;
     owned.resize(cols, rows) catch |err| return resizeStatus(err);
-    return @intFromEnum(HowlPtyCallStatus.ok);
+    return c.HOWL_PTY_CALL_OK;
 }
 
 pub fn sessionPublishSignal(handle: SessionHandle, signal: u8) callconv(.c) i32 {
-    const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
-    const typed = pty.ControlSignal.fromRaw(signal) catch return @intFromEnum(HowlPtyCallStatus.invalid_argument);
-    owned.publishControlSignal(typed) catch return @intFromEnum(HowlPtyCallStatus.failed);
-    return @intFromEnum(HowlPtyCallStatus.ok);
+    const owned = sessionFromHandle(handle) orelse return c.HOWL_PTY_CALL_MISSING_HANDLE;
+    const typed = pty.ControlSignal.fromRaw(signal) catch return c.HOWL_PTY_CALL_INVALID_ARGUMENT;
+    owned.publishControlSignal(typed) catch return c.HOWL_PTY_CALL_FAILED;
+    return c.HOWL_PTY_CALL_OK;
 }
 
 pub fn sessionPublishInput(handle: SessionHandle, ptr: ?[*]const u8, len: usize) callconv(.c) i32 {
-    const owned = sessionFromHandle(handle) orelse return @intFromEnum(HowlPtyCallStatus.missing_handle);
-    const bytes = bytesIn(ptr, len) orelse return @intFromEnum(HowlPtyCallStatus.invalid_argument);
-    owned.publishHostInput(bytes) catch return @intFromEnum(HowlPtyCallStatus.failed);
-    return @intFromEnum(HowlPtyCallStatus.ok);
+    const owned = sessionFromHandle(handle) orelse return c.HOWL_PTY_CALL_MISSING_HANDLE;
+    const bytes = bytesIn(ptr, len) orelse return c.HOWL_PTY_CALL_INVALID_ARGUMENT;
+    owned.publishHostInput(bytes) catch return c.HOWL_PTY_CALL_FAILED;
+    return c.HOWL_PTY_CALL_OK;
 }
 
-pub fn sessionPumpOutbound(handle: SessionHandle, woke: u8) callconv(.c) FfiOutboundPump {
-    const owned = sessionFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.missing_handle) };
+pub fn sessionPumpOutbound(handle: SessionHandle, woke: u8) callconv(.c) c.HowlPtyOutboundPump {
+    const owned = sessionFromHandle(handle) orelse return .{ .status = c.HOWL_PTY_CALL_MISSING_HANDLE, .had_pending = 0, .has_pending = 0, .wait_readable = 0, .reserved0 = 0, .drained = 0 };
     return outboundPumpOut(owned.pumpOutboundInput(woke != 0));
 }
 
@@ -236,18 +194,18 @@ pub fn sessionWaitReadable(handle: SessionHandle, timeout_ms: i32) callconv(.c) 
     return boolByte(owned.waitReadable(timeout_ms));
 }
 
-pub fn sessionRead(handle: SessionHandle, ptr: ?[*]u8, len: usize) callconv(.c) FfiReadResult {
-    const owned = sessionFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.missing_handle) };
-    const buf = bytesOut(ptr, len) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.invalid_argument) };
+pub fn sessionRead(handle: SessionHandle, ptr: ?[*]u8, len: usize) callconv(.c) c.HowlPtyReadResult {
+    const owned = sessionFromHandle(handle) orelse return .{ .status = c.HOWL_PTY_CALL_MISSING_HANDLE, .any_read = 0, .reserved0 = 0, .reserved1 = 0, .reserved2 = 0, .bytes_read = 0 };
+    const buf = bytesOut(ptr, len) orelse return .{ .status = c.HOWL_PTY_CALL_INVALID_ARGUMENT, .any_read = 0, .reserved0 = 0, .reserved1 = 0, .reserved2 = 0, .bytes_read = 0 };
     const n = owned.readTransport(buf);
     return .{
-        .status = @intFromEnum(HowlPtyCallStatus.ok),
+        .status = c.HOWL_PTY_CALL_OK,
         .any_read = boolByte(n != 0),
         .bytes_read = n,
     };
 }
 
-pub fn transportPumpLimits(mode: u8) callconv(.c) FfiTransportPumpLimits {
-    const typed = transportPumpModeIn(mode) orelse return .{ .status = @intFromEnum(HowlPtyCallStatus.invalid_argument) };
+pub fn transportPumpLimits(mode: u8) callconv(.c) c.HowlPtyTransportPumpLimits {
+    const typed = transportPumpModeIn(mode) orelse return .{ .status = c.HOWL_PTY_CALL_INVALID_ARGUMENT, .chunk_bytes = 0, .max_reads = 0, .max_bytes = 0 };
     return transportPumpLimitsOut(session.Session.transportPumpLimits(typed));
 }

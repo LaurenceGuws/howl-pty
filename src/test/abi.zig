@@ -1,57 +1,12 @@
 const std = @import("std");
 const ffi = @import("ffi");
-pub const c = @cImport({
-    @cInclude("howl_pty.h");
-});
+pub const c = @import("howl_pty_c");
 
 test {
     _ = @import("ffi.zig");
 }
 
 comptime {
-    std.debug.assert(@sizeOf(ffi.FfiSnapshot) == @sizeOf(c.HowlPtySnapshot));
-    std.debug.assert(@sizeOf(ffi.FfiOutboundPump) == @sizeOf(c.HowlPtyOutboundPump));
-    std.debug.assert(@sizeOf(ffi.FfiReadResult) == @sizeOf(c.HowlPtyReadResult));
-    std.debug.assert(@sizeOf(ffi.FfiTransportPumpLimits) == @sizeOf(c.HowlPtyTransportPumpLimits));
-
-    std.debug.assert(@alignOf(ffi.FfiSnapshot) == @alignOf(c.HowlPtySnapshot));
-    std.debug.assert(@alignOf(ffi.FfiOutboundPump) == @alignOf(c.HowlPtyOutboundPump));
-    std.debug.assert(@alignOf(ffi.FfiReadResult) == @alignOf(c.HowlPtyReadResult));
-    std.debug.assert(@alignOf(ffi.FfiTransportPumpLimits) == @alignOf(c.HowlPtyTransportPumpLimits));
-
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "status") == @offsetOf(c.HowlPtySnapshot, "status"));
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "cols") == @offsetOf(c.HowlPtySnapshot, "cols"));
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "rows") == @offsetOf(c.HowlPtySnapshot, "rows"));
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "session_status") == @offsetOf(c.HowlPtySnapshot, "session_status"));
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "terminal_reason") == @offsetOf(c.HowlPtySnapshot, "terminal_reason"));
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "last_wait_outcome") == @offsetOf(c.HowlPtySnapshot, "last_wait_outcome"));
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "reserved0") == @offsetOf(c.HowlPtySnapshot, "reserved0"));
-    std.debug.assert(@offsetOf(ffi.FfiSnapshot, "resize_count") == @offsetOf(c.HowlPtySnapshot, "resize_count"));
-
-    std.debug.assert(@offsetOf(ffi.FfiOutboundPump, "status") == @offsetOf(c.HowlPtyOutboundPump, "status"));
-    std.debug.assert(@offsetOf(ffi.FfiOutboundPump, "had_pending") == @offsetOf(c.HowlPtyOutboundPump, "had_pending"));
-    std.debug.assert(@offsetOf(ffi.FfiOutboundPump, "has_pending") == @offsetOf(c.HowlPtyOutboundPump, "has_pending"));
-    std.debug.assert(@offsetOf(ffi.FfiOutboundPump, "wait_readable") == @offsetOf(c.HowlPtyOutboundPump, "wait_readable"));
-    std.debug.assert(@offsetOf(ffi.FfiOutboundPump, "reserved0") == @offsetOf(c.HowlPtyOutboundPump, "reserved0"));
-    std.debug.assert(@offsetOf(ffi.FfiOutboundPump, "drained") == @offsetOf(c.HowlPtyOutboundPump, "drained"));
-
-    std.debug.assert(@offsetOf(ffi.FfiReadResult, "status") == @offsetOf(c.HowlPtyReadResult, "status"));
-    std.debug.assert(@offsetOf(ffi.FfiReadResult, "any_read") == @offsetOf(c.HowlPtyReadResult, "any_read"));
-    std.debug.assert(@offsetOf(ffi.FfiReadResult, "reserved0") == @offsetOf(c.HowlPtyReadResult, "reserved0"));
-    std.debug.assert(@offsetOf(ffi.FfiReadResult, "reserved1") == @offsetOf(c.HowlPtyReadResult, "reserved1"));
-    std.debug.assert(@offsetOf(ffi.FfiReadResult, "reserved2") == @offsetOf(c.HowlPtyReadResult, "reserved2"));
-    std.debug.assert(@offsetOf(ffi.FfiReadResult, "bytes_read") == @offsetOf(c.HowlPtyReadResult, "bytes_read"));
-
-    std.debug.assert(@offsetOf(ffi.FfiTransportPumpLimits, "status") == @offsetOf(c.HowlPtyTransportPumpLimits, "status"));
-    std.debug.assert(@offsetOf(ffi.FfiTransportPumpLimits, "chunk_bytes") == @offsetOf(c.HowlPtyTransportPumpLimits, "chunk_bytes"));
-    std.debug.assert(@offsetOf(ffi.FfiTransportPumpLimits, "max_reads") == @offsetOf(c.HowlPtyTransportPumpLimits, "max_reads"));
-    std.debug.assert(@offsetOf(ffi.FfiTransportPumpLimits, "max_bytes") == @offsetOf(c.HowlPtyTransportPumpLimits, "max_bytes"));
-
-    std.debug.assert(@intFromEnum(ffi.HowlPtyCallStatus.ok) == c.HOWL_PTY_CALL_OK);
-    std.debug.assert(@intFromEnum(ffi.HowlPtyCallStatus.missing_handle) == c.HOWL_PTY_CALL_MISSING_HANDLE);
-    std.debug.assert(@intFromEnum(ffi.HowlPtyCallStatus.invalid_argument) == c.HOWL_PTY_CALL_INVALID_ARGUMENT);
-    std.debug.assert(@intFromEnum(ffi.HowlPtyCallStatus.failed) == c.HOWL_PTY_CALL_FAILED);
-
     std.debug.assert(c.HOWL_PTY_SESSION_IDLE == 0);
     std.debug.assert(c.HOWL_PTY_SESSION_ACTIVE == 1);
     std.debug.assert(c.HOWL_PTY_SESSION_STOPPED == 2);
