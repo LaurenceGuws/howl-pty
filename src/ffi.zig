@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("abi.zig").c;
+const c = @import("howl_pty_c");
 const pty = @import("pty.zig");
 const session = @import("session.zig");
 
