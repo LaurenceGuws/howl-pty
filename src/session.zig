@@ -14,7 +14,7 @@ pub const TransportReadLimit = u32;
 pub const TransportByteLimit = u32;
 pub const TransportChunkBytes = u32;
 /// Session initialization config.
-pub const Config = struct {
+pub const InitConfig = struct {
     allocator: std.mem.Allocator,
     cols: u16,
     rows: u16,
@@ -234,7 +234,7 @@ pub const Session = struct {
     ops: Ops,
 
     /// Initialize session state.
-    pub fn init(config: Config) !Session {
+    pub fn init(config: InitConfig) !Session {
         if (config.cols == 0 or config.rows == 0) return error.InvalidConfig;
         if (config.pending_capacity == 0) return error.InvalidConfig;
         if (config.pty != null and config.launch != null) return error.InvalidConfig;
@@ -579,7 +579,7 @@ pub const Session = struct {
     }
 };
 
-fn initTransport(config: Config) !Transport {
+fn initTransport(config: InitConfig) !Transport {
     if (config.pty) |transport| return .{ .external = transport };
     if (config.launch) |launch| {
         const owned = try pty_api.Owned.init(
