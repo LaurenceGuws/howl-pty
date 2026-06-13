@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     const pty_c_mod = pty_c_translate.createModule();
 
     const unit_mod = b.createModule(.{
-        .root_source_file = b.path("src/test_unit.zig"),
+        .root_source_file = b.path("test_unit.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) void {
     const run_mod_tests = add_test_run_artifact(b, mod_tests);
 
     const abi_mod = b.createModule(.{
-        .root_source_file = b.path("src/test/abi.zig"),
+        .root_source_file = b.path("test_abi.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
     const run_abi_tests = add_test_run_artifact(b, abi_tests);
 
     const integration_mod = b.createModule(.{
-        .root_source_file = b.path("src/test_integration.zig"),
+        .root_source_file = b.path("test_integration.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,

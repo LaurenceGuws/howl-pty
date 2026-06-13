@@ -1,6 +1,6 @@
 const std = @import("std");
-const session = @import("session.zig");
-const pty_api = @import("pty.zig");
+const session = @import("../../src/session.zig");
+const pty_api = @import("../../src/pty.zig");
 const pty = @import("pty/pty_test.zig");
 
 const ScriptedPty = struct {

@@ -1,5 +1,5 @@
 const std = @import("std");
-const pty = @import("../pty.zig");
+const pty = @import("../../../src/pty.zig");
 const Pty = pty.Pty;
 const ControlSignal = pty.ControlSignal;
 const WaitReadableResult = pty.Pty.WaitReadableResult;

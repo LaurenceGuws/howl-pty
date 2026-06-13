@@ -1,6 +1,6 @@
 const std = @import("std");
-const pty_api = @import("../pty.zig");
-const posix_pty = @import("posix.zig");
+const pty_api = @import("../../../src/pty.zig");
+const posix_pty = @import("../../../src/pty/posix.zig");
 
 test "pending child stop uses direct child ownership until session is live" {
     const pid = posix_pty.c.fork();

@@ -1,5 +1,5 @@
 const std = @import("std");
-const pty_api = @import("pty.zig");
+const pty_api = @import("../../src/pty.zig");
 const pty = @import("pty/pty_test.zig");
 
 test "pty control signals stay typed across the interface" {
