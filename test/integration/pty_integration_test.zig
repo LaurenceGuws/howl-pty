@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const pty_api = @import("../../src/pty.zig");
-const posix_pty = @import("../../src/pty/posix.zig");
+const posix_pty = @import("../../src/posix.zig");
 
 const real_pty_timeout_ms: i32 = 100;
 const real_pty_max_turns: u32 = 50;

@@ -128,4 +128,4 @@ pub const ControlSignal = enum(u8) {
     }
 };
 
-pub const Owned = @import("pty/unix.zig").Pty;
+pub const Owned = @import("unix.zig").Pty;

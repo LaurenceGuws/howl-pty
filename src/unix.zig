@@ -1,6 +1,6 @@
 const builtin = @import("builtin");
 const posix = @import("posix.zig");
-const pty = @import("../pty.zig");
+const pty = @import("pty.zig");
 const c = posix.c;
 
 pub const Pty = posix.make(struct {

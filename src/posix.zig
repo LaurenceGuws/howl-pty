@@ -1,6 +1,6 @@
 const std = @import("std");
 const posix = std.posix;
-const pty = @import("../pty.zig");
+const pty = @import("pty.zig");
 
 pub const c = @cImport({
     @cDefine("_Nonnull", "");
