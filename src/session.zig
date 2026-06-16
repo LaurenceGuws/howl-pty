@@ -276,7 +276,6 @@ pub const Session = struct {
             // directly instead of booting at a transport-local default.
             transport.start(self.cols, self.rows) catch |err| {
                 self.ops.start_failures += 1;
-                std.log.err("SES,event=startErr,error={s}", .{@errorName(err)});
                 return err;
             };
         }
