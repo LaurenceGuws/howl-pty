@@ -4,13 +4,17 @@ PTY-backed child transport library for Howl.
 
 `howl-pty` owns process transport state: child I/O, lifecycle/result truth, resize delivery, wait/kick behavior, and typed control signals. It does not parse terminal data or own host event loops.
 
-## Public ABI
+## Embedding surfaces
 
-- Header: `include/howl_pty.h`
-- Exported symbols: `howl_pty_*`
-- Public root: `src/libhowl_pty.zig`
+- Native Zig module: `howl_pty`
+- Native root: `src/howl_pty.zig`
+- C header: `include/howl_pty.h`
+- C exports: `howl_pty_*`
+- C root: `src/libhowl_pty.zig`
 
-Internal Zig files are not host integration surfaces.
+The native Zig model is the primary development surface. The C ABI remains
+available as language-neutral glue while it continues to earn its maintenance
+cost.
 
 ## Build
 

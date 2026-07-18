@@ -10,12 +10,13 @@ Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../project-memory.md`](../projec
 
 It owns PTY variants, child I/O, resize delivery, control signals, wait/kick behavior, lifecycle/result truth, and transport state. It does not model terminal semantics, host event loops, VT parsing, rendering, or presentation.
 
-## Public Surface
+## Embedding Surfaces
 
-- The shipped embedding contract is `include/howl_pty.h` plus exported `howl_pty_*` symbols.
+- The primary development contract is the `howl_pty` Zig module rooted at `src/howl_pty.zig`.
+- The language-neutral contract is `include/howl_pty.h` plus exported `howl_pty_*` symbols.
 - `src/libhowl_pty.zig` is the C ABI export root.
-- Session handles are opaque.
-- Internal Zig files are not host integration surfaces.
+- Private implementation modules remain repo-local owners rather than direct embedding targets.
+- This private project has no compatibility promise while its native owner boundaries mature.
 
 ## Owners
 
@@ -28,7 +29,7 @@ It owns PTY variants, child I/O, resize delivery, control signals, wait/kick beh
 
 ## Main Flow
 
-1. Host initializes an opaque PTY session handle.
+1. Host initializes PTY session state through the native model or an opaque C ABI handle.
 2. Host starts the session with host-owned launch policy and startup geometry.
 3. Host publishes input bytes and pumps bounded outbound writes.
 4. Host or a host wait thread waits for readability through the PTY ABI.

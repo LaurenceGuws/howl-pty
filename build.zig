@@ -1,12 +1,17 @@
-// This repo ships a C ABI first until further notice.
-// Keep build entrypoints aligned around the shipped header and exported symbols, not privileged Zig imports.
-// Keep the repo-local test roots explicit; the shipped surface stays the C ABI.
+// The native Zig model is the primary development surface. The C ABI remains
+// available for hosts that need a language-neutral boundary.
 
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    _ = b.addModule("howl_pty", .{
+        .root_source_file = b.path("src/howl_pty.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
     const pty_c_translate = b.addTranslateC(.{
         .root_source_file = b.path("include/howl_pty.h"),
         .target = target,
