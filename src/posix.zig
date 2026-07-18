@@ -1,7 +1,10 @@
+//! Owns POSIX PTY launch, transport descriptors, waits, and child cleanup.
+
 const std = @import("std");
 const posix = std.posix;
 const pty = @import("pty.zig");
 
+/// Exposes translated platform calls required by the native Unix backend.
 pub const c = @cImport({
     @cDefine("_Nonnull", "");
     @cDefine("_Nullable", "");
@@ -19,16 +22,16 @@ pub const c = @cImport({
     @cInclude("sys/wait.h");
 });
 
-const Pty = pty.Pty;
 const ControlSignal = pty.ControlSignal;
-const WaitReadableResult = pty.Pty.WaitReadableResult;
+const WaitReadableResult = pty.WaitReadableResult;
 
+/// Owns one newly opened master/slave PTY pair until parent or child adoption.
 pub const Open = struct {
     master_fd: posix.fd_t,
     slave_fd: posix.fd_t,
 };
 
-pub const Wake = struct {
+const Wake = struct {
     read_fd: posix.fd_t,
     write_fd: posix.fd_t,
 };
@@ -47,6 +50,7 @@ const stop_hangup_grace_ns = 50 * std.time.ns_per_ms;
 const stop_terminate_grace_ns = 50 * std.time.ns_per_ms;
 const stop_wait_slice_ns = std.time.ns_per_ms;
 
+/// Builds an owned PTY around one platform-specific open operation.
 pub fn make(comptime Backend: type) type {
     return struct {
         allocator: std.mem.Allocator,
@@ -75,7 +79,8 @@ pub fn make(comptime Backend: type) type {
             child_ready: ChildReady,
         };
 
-        pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8, start_path: ?[]const u8) (error{OutOfMemory} || Pty.StartError)!Self {
+        /// Copies launch strings and initializes an idle PTY owner.
+        pub fn init(allocator: std.mem.Allocator, shell_path: []const u8, command: ?[]const u8, start_path: ?[]const u8) (error{OutOfMemory} || pty.StartError)!Self {
             try Backend.ensureSupported();
 
             const shell_path_z = try allocator.dupeZ(u8, shell_path);
@@ -104,19 +109,17 @@ pub fn make(comptime Backend: type) type {
             };
         }
 
+        /// Stops the child group, closes descriptors, and releases copied launch strings.
         pub fn deinit(self: *Self) void {
-            self.stopTransport();
+            self.stop();
             self.allocator.free(self.shell_path);
             if (self.command) |bytes| self.allocator.free(bytes);
             if (self.start_path) |bytes| self.allocator.free(bytes);
             self.* = undefined;
         }
 
-        pub fn pty(self: *Self) Pty {
-            return .{ .ptr = self, .vtable = &vtable };
-        }
-
-        fn startTransport(self: *Self, cols: u16, rows: u16) Pty.StartError!void {
+        /// Starts one child at the supplied nonzero terminal dimensions.
+        pub fn start(self: *Self, cols: u16, rows: u16) pty.StartError!void {
             if (self.started) return error.AlreadyStarted;
             std.debug.assert(cols > 0);
             std.debug.assert(rows > 0);
@@ -131,14 +134,14 @@ pub fn make(comptime Backend: type) type {
             try configureMaster(transport.master_fd);
             const pid = try self.forkChild(transport, pipes);
             self.adoptParentTransport(transport, pipes, pid, cols, rows);
-            errdefer self.stopTransport();
+            errdefer self.stop();
 
             try self.awaitChildSession(pipes.child_ready.read_fd);
             self.child = .{ .live = pid };
             self.assertStarted();
         }
 
-        fn openStartPipes() Pty.StartError!StartPipes {
+        fn openStartPipes() pty.StartError!StartPipes {
             const wake = try openWakePipe();
             errdefer closeWakePipe(wake);
 
@@ -153,12 +156,12 @@ pub fn make(comptime Backend: type) type {
             closeWakePipe(pipes.wake);
         }
 
-        fn configureMaster(master_fd: posix.fd_t) Pty.StartError!void {
+        fn configureMaster(master_fd: posix.fd_t) pty.StartError!void {
             try setCloseOnExec(master_fd);
             try setNonBlocking(master_fd);
         }
 
-        fn forkChild(self: *Self, transport: Open, pipes: StartPipes) Pty.StartError!posix.pid_t {
+        fn forkChild(self: *Self, transport: Open, pipes: StartPipes) pty.StartError!posix.pid_t {
             const pid = c.fork();
             if (pid < 0) return error.OpenPtyFailed;
             if (pid == 0) {
@@ -198,7 +201,8 @@ pub fn make(comptime Backend: type) type {
             std.debug.assert(self.childPid() != null);
         }
 
-        fn stopTransport(self: *Self) void {
+        /// Stops and reaps the child process group and closes every descriptor.
+        pub fn stop(self: *Self) void {
             if (!self.started) return;
 
             self.kickWait();
@@ -245,7 +249,7 @@ pub fn make(comptime Backend: type) type {
             };
         }
 
-        fn awaitChildSession(self: *Self, ready_fd: posix.fd_t) Pty.StartError!void {
+        fn awaitChildSession(self: *Self, ready_fd: posix.fd_t) pty.StartError!void {
             defer _ = c.close(@intCast(ready_fd));
             var byte: [1]u8 = undefined;
             while (true) {
@@ -300,7 +304,8 @@ pub fn make(comptime Backend: type) type {
             self.child = .none;
         }
 
-        fn kickWait(self: *Self) void {
+        /// Wakes a blocked transport wait without affecting child state.
+        pub fn kickWait(self: *Self) void {
             if (!self.started) return;
             if (self.wake_write_fd) |fd| {
                 var byte: [1]u8 = .{1};
@@ -319,29 +324,8 @@ pub fn make(comptime Backend: type) type {
             }
         }
 
-        const vtable: Pty.VTable = .{
-            .start = startPty,
-            .stop = stopPty,
-            .write = writePty,
-            .read = readPty,
-            .wait_readable = waitReadablePty,
-            .kick_wait = kickWaitPty,
-            .resize = resizePty,
-            .control = controlPty,
-        };
-
-        fn startPty(ptr: *anyopaque, cols: u16, rows: u16) Pty.StartError!void {
-            const self: *Self = @ptrCast(@alignCast(ptr));
-            try self.startTransport(cols, rows);
-        }
-
-        fn stopPty(ptr: *anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(ptr));
-            self.stopTransport();
-        }
-
-        fn writePty(ptr: *anyopaque, bytes: []const u8) Pty.WriteError!usize {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+        /// Writes caller-owned bytes without retaining them.
+        pub fn write(self: *Self, bytes: []const u8) pty.WriteError!usize {
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
             if (bytes.len == 0) return 0;
@@ -357,8 +341,8 @@ pub fn make(comptime Backend: type) type {
             return @intCast(n);
         }
 
-        fn readPty(ptr: *anyopaque, buf: []u8) Pty.ReadError!usize {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+        /// Reads available transport bytes into caller-owned storage.
+        pub fn read(self: *Self, buf: []u8) pty.ReadError!usize {
             if (!self.started) return error.NotStarted;
             const master_fd = self.master_fd orelse return error.NotStarted;
             if (buf.len == 0) return 0;
@@ -388,8 +372,8 @@ pub fn make(comptime Backend: type) type {
             return @intCast(n);
         }
 
-        fn waitReadablePty(ptr: *anyopaque, timeout_ms: i32) Pty.WaitReadableError!WaitReadableResult {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+        /// Waits for transport readability, timeout, or an explicit wake.
+        pub fn waitReadable(self: *Self, timeout_ms: i32) pty.WaitReadableError!WaitReadableResult {
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
             std.debug.assert(self.wake_read_fd != null);
@@ -414,15 +398,12 @@ pub fn make(comptime Backend: type) type {
             return waitReadablePollResult(fds[0].revents);
         }
 
-        fn kickWaitPty(ptr: *anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(ptr));
-            self.kickWait();
-        }
-
-        fn resizePty(ptr: *anyopaque, cols: u16, rows: u16) Pty.ResizeError!void {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+        /// Applies nonzero terminal dimensions to the active PTY.
+        pub fn resize(self: *Self, cols: u16, rows: u16) pty.ResizeError!void {
             self.refreshChildState();
             if (!self.transportReady()) return error.NotStarted;
+            std.debug.assert(cols > 0);
+            std.debug.assert(rows > 0);
 
             var winsize = c.struct_winsize{
                 .ws_row = rows,
@@ -437,8 +418,8 @@ pub fn make(comptime Backend: type) type {
             self.last_rows = rows;
         }
 
-        fn controlPty(ptr: *anyopaque, signal: ControlSignal) void {
-            const self: *Self = @ptrCast(@alignCast(ptr));
+        /// Delivers one typed signal to the active child process group.
+        pub fn control(self: *Self, signal: ControlSignal) void {
             self.refreshChildState();
             if (!self.transportReady()) return;
             if (self.childPid()) |pid| _ = sendGroupSignal(pid, signal);
@@ -463,7 +444,7 @@ fn closeTransport(transport: Open) void {
     _ = c.close(@intCast(transport.slave_fd));
 }
 
-pub fn openWake() Pty.StartError!Wake {
+fn openWake() pty.StartError!Wake {
     var fds = [_]c_int{ -1, -1 };
     if (c.pipe(&fds) != 0) return error.OpenPtyFailed;
     errdefer {
@@ -478,12 +459,12 @@ pub fn openWake() Pty.StartError!Wake {
     return .{ .read_fd = @intCast(fds[0]), .write_fd = @intCast(fds[1]) };
 }
 
-pub fn closeWake(wake: Wake) void {
+fn closeWake(wake: Wake) void {
     _ = c.close(@intCast(wake.read_fd));
     _ = c.close(@intCast(wake.write_fd));
 }
 
-fn openWakePipe() Pty.StartError!Wake {
+fn openWakePipe() pty.StartError!Wake {
     return openWake();
 }
 
@@ -491,7 +472,7 @@ fn closeWakePipe(wake: Wake) void {
     closeWake(wake);
 }
 
-fn openChildReadyPipe() Pty.StartError!ChildReady {
+fn openChildReadyPipe() pty.StartError!ChildReady {
     var fds = [_]c_int{ -1, -1 };
     if (c.pipe(&fds) != 0) return error.OpenPtyFailed;
     errdefer {
@@ -509,19 +490,19 @@ fn closeChildReadyPipe(pipe: ChildReady) void {
     _ = c.close(@intCast(pipe.write_fd));
 }
 
-pub fn setNonBlocking(fd: posix.fd_t) Pty.StartError!void {
+fn setNonBlocking(fd: posix.fd_t) pty.StartError!void {
     const flags = c.fcntl(fd, c.F_GETFL, @as(c_int, 0));
     if (flags < 0) return error.OpenPtyFailed;
     if (c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) return error.OpenPtyFailed;
 }
 
-pub fn setCloseOnExec(fd: posix.fd_t) Pty.StartError!void {
+fn setCloseOnExec(fd: posix.fd_t) pty.StartError!void {
     const flags = c.fcntl(fd, c.F_GETFD, @as(c_int, 0));
     if (flags < 0) return error.OpenPtyFailed;
     if (c.fcntl(fd, c.F_SETFD, flags | c.FD_CLOEXEC) != 0) return error.OpenPtyFailed;
 }
 
-pub fn requireExecutable(path: [:0]const u8) Pty.StartError!void {
+fn requireExecutable(path: [:0]const u8) pty.StartError!void {
     if (c.access(path.ptr, c.X_OK) != 0) return error.ShellUnavailable;
 }
 
@@ -529,7 +510,7 @@ fn cArg(path: [*:0]const u8) [*c]u8 {
     return @ptrFromInt(@intFromPtr(path));
 }
 
-pub const ChildProcessSetupFn = *const fn (shell_path: [:0]const u8) void;
+const ChildProcessSetupFn = *const fn (shell_path: [:0]const u8) void;
 
 const ChildProcessFds = struct {
     master_fd: posix.fd_t,
@@ -538,7 +519,7 @@ const ChildProcessFds = struct {
     wake_write_fd: ?posix.fd_t,
 };
 
-fn resetChildSignalDispositions() Pty.StartError!void {
+fn resetChildSignalDispositions() pty.StartError!void {
     var sa: posix.Sigaction = .{
         .handler = .{ .handler = posix.SIG.DFL },
         .mask = posix.sigemptyset(),
@@ -559,12 +540,12 @@ fn resetChildSignalDispositions() Pty.StartError!void {
     if (c.sigaction(@intFromEnum(posix.SIG.TRAP), @ptrCast(&sa), null) != 0) return error.OpenPtyFailed;
 }
 
-fn closeChildFdIfNeeded(fd: posix.fd_t) Pty.StartError!void {
+fn closeChildFdIfNeeded(fd: posix.fd_t) pty.StartError!void {
     if (fd <= 2) return;
     if (c.close(@intCast(fd)) != 0) return error.OpenPtyFailed;
 }
 
-fn setupChildProcessFds(fds: ChildProcessFds) Pty.StartError!void {
+fn setupChildProcessFds(fds: ChildProcessFds) pty.StartError!void {
     try resetChildSignalDispositions();
     if (c.setsid() < 0) return error.OpenPtyFailed;
     if (c.ioctl(@intCast(fds.slave_fd), c.TIOCSCTTY, @as(c_ulong, 0)) != 0) return error.OpenPtyFailed;
@@ -577,7 +558,7 @@ fn setupChildProcessFds(fds: ChildProcessFds) Pty.StartError!void {
     try closeChildFdIfNeeded(fds.slave_fd);
 }
 
-fn notifyParentChildSessionReady(ready_write_fd: ?posix.fd_t) Pty.StartError!void {
+fn notifyParentChildSessionReady(ready_write_fd: ?posix.fd_t) pty.StartError!void {
     const fd = ready_write_fd orelse return;
     defer closeChildFdIfNeeded(fd) catch unreachable;
     var byte: [1]u8 = .{1};
@@ -591,7 +572,7 @@ fn notifyParentChildSessionReady(ready_write_fd: ?posix.fd_t) Pty.StartError!voi
     }
 }
 
-pub fn childProcess(
+fn childProcess(
     master_fd: posix.fd_t,
     slave_fd: posix.fd_t,
     wake_read_fd: ?posix.fd_t,
@@ -601,7 +582,7 @@ pub fn childProcess(
     command: ?[*:0]const u8,
     cwd: ?[*:0]const u8,
     setup: ?ChildProcessSetupFn,
-) Pty.StartError!void {
+) pty.StartError!void {
     try setupChildProcessFds(.{
         .master_fd = master_fd,
         .slave_fd = slave_fd,
@@ -715,9 +696,3 @@ fn sendSignalTarget(target: posix.pid_t, signal: ControlSignal) SignalResult {
         }
     }
 }
-
-pub const testing = struct {
-    pub fn waitReadablePollResult(revents: i16) WaitReadableResult {
-        return @import("posix.zig").waitReadablePollResult(revents);
-    }
-};

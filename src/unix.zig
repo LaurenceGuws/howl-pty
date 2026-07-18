@@ -1,16 +1,21 @@
+//! Selects the native Linux and macOS PTY open operation.
+
 const builtin = @import("builtin");
 const posix = @import("posix.zig");
 const pty = @import("pty.zig");
 const c = posix.c;
 
+/// Owns one supported Unix PTY and its child process group.
 pub const Pty = posix.make(struct {
-    pub fn ensureSupported() pty.Pty.StartError!void {
+    /// Accepts the Linux and macOS implementations selected by this file.
+    pub fn ensureSupported() pty.StartError!void {
         if (builtin.os.tag != .linux and builtin.os.tag != .macos) {
             return error.UnsupportedPlatform;
         }
     }
 
-    pub fn openTransport(cols: u16, rows: u16) pty.Pty.StartError!posix.Open {
+    /// Opens one master/slave PTY pair at the requested dimensions.
+    pub fn openTransport(cols: u16, rows: u16) pty.StartError!posix.Open {
         var master_fd: c_int = -1;
         var slave_fd: c_int = -1;
         var winsize = c.struct_winsize{
